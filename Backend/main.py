@@ -12,6 +12,9 @@ app.include_router(rag_router)
 app.include_router(heatmap_router)
 app.include_router(skill_wallet_router)
 
+@app.get("/health")
+def health():
+    return {"status": "backend running"}
 @app.get("/")
 def root():
     return {"message": "SkillSetu Backend Running"}
