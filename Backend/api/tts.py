@@ -3,7 +3,7 @@ from services.tts_service import generate_speech
 
 router = APIRouter()
 
-@router.post("/tts")
+@router.post("/text-to-speech")
 def text_to_speech(text: str):
 
     audio_file = generate_speech(text)
