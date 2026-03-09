@@ -5,7 +5,7 @@ import os
 def generate_speech(text: str):
     
     # create unique filename
-    filename = f"audio_{uuid.uuid4()}.mp3"
+    filename = f"audio/audio_{uuid.uuid4()}.mp3"
 
     # create audio
     tts = gTTS(text=text, lang="en")
