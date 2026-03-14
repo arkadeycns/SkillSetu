@@ -18,7 +18,7 @@ function App() {
         <Route path="/signup" element={<Signup />} />
 
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/skills" element={<ChooseSkill />} />
+        <Route path="/chooseskill" element={<ChooseSkill />} />
         <Route path="/interview" element={<AIInterview />} />
         <Route path="/result" element={<Result />} />
         <Route path="/wallet" element={<Wallet />} />
