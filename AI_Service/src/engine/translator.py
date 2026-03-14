@@ -1,10 +1,18 @@
 # src/engine/translator.py
 
 from groq import Groq
-import os
 from src.config import GROQ_API_KEY
 
 client = Groq(api_key=GROQ_API_KEY)
+
+
+def _translate(prompt: str) -> str:
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0,
+    )
+    return response.choices[0].message.content.strip()
 
 
 def translate_to_english(original_text, source_language):
@@ -18,15 +26,7 @@ def translate_to_english(original_text, source_language):
     {original_text}
     """
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0
-    )
-
-    return response.choices[0].message.content.strip()
+    return _translate(prompt)
 
 
 def translate_to_user_language(english_feedback, target_language):
@@ -40,12 +40,4 @@ def translate_to_user_language(english_feedback, target_language):
     {english_feedback}
     """
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0
-    )
-
-    return response.choices[0].message.content.strip()
+    return _translate(prompt)

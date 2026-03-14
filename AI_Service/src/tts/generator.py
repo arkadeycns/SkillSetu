@@ -14,12 +14,29 @@ LANGUAGE_MAP = {
     "Punjabi": "pa"
 }
 
+ISO_LANG_WHITELIST = {
+    "en",
+    "hi",
+    "ta",
+    "te",
+    "bn",
+    "mr",
+    "gu",
+    "kn",
+    "ml",
+    "pa",
+}
+
 def generate_audio_response(text, language_code, output_filename="data/response.mp3"):
     """Takes localized text and saves it as an MP3 file."""
 
     try:
-        # Convert language name → ISO code
-        lang = LANGUAGE_MAP.get(language_code, "en")
+        normalized = (language_code or "").strip()
+        # Accept either full language name or already-detected ISO code.
+        if normalized in ISO_LANG_WHITELIST:
+            lang = normalized
+        else:
+            lang = LANGUAGE_MAP.get(normalized, "en")
 
         tts = gTTS(text=text, lang=lang, slow=False)
         tts.save(output_filename)

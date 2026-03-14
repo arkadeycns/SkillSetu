@@ -1,3 +1,5 @@
 """Vision processing package."""
 
-__all__ = []
+from .analyzer import evaluate_competency
+
+__all__ = ["evaluate_competency"]
