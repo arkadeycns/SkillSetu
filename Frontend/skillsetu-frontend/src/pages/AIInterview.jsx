@@ -107,13 +107,12 @@ export default function AIInterview() {
               
               {/* Playable Audio in Chat */}
               {msg.audioUrl && (
-                <audio 
-                  src={msg.audioUrl} 
-                  controls 
-                  // Only auto-play if it's a brand new message from the AI
-                  autoPlay={msg.sender === 'ai' && index === messages.length - 1}
-                  className="h-10 w-full rounded-md"
-                />
+                  <audio 
+                    src={msg.audioUrl} 
+                    controls 
+                    autoPlay={msg.sender === 'ai' && index === messages.length - 1}
+                    className="h-10 w-full min-w-[200px] sm:min-w-[250px] rounded-md"
+                  />
               )}
             </div>
 

@@ -1,7 +1,21 @@
 import sys
 import os
+from dotenv import load_dotenv
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# --- DEBUG SHIELD START ---
+# Force Python to find the exact .env file next to this main.py
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(CURRENT_DIR, ".env")
+load_dotenv(dotenv_path=env_path)
+
+print("\n=== 🚦 ENVIRONMENT VARIABLE CHECK 🚦 ===")
+print(f"Looking for .env file at: {env_path}")
+print(f"Is GROQ_API_KEY found? {'✅ YES' if os.environ.get('GROQ_API_KEY') else '❌ NO'}")
+print(f"Is PINECONE_API_KEY found? {'✅ YES' if os.environ.get('PINECONE_API_KEY') else '❌ NO'}")
+print("========================================\n")
+# --- DEBUG SHIELD END ---
+
+BASE_DIR = os.path.dirname(CURRENT_DIR)
 
 sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(BASE_DIR, "AI_Service"))
