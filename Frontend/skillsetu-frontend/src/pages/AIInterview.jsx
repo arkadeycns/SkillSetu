@@ -65,14 +65,15 @@ export default function AIInterview() {
     
     // Send to backend
     setIsProcessing(true);
-    const aiResponseAudioUrl = await sendAudioToAI(blobToSend);
+    const aiResult = await sendAudioToAI(blobToSend);
     setIsProcessing(false);
 
     // Add AI response to the chat
-    if (aiResponseAudioUrl) {
-      setMessages(prev => [...prev, { sender: 'ai', audioUrl: aiResponseAudioUrl }]);
+    if (typeof aiResult === 'string') {
+      setMessages(prev => [...prev, { sender: 'ai', audioUrl: aiResult }]);
     } else {
-      alert("Network error. Could not reach the AI.");
+      const msg = aiResult?.error || "Network error. Could not reach the AI.";
+      alert(msg);
     }
   };
 

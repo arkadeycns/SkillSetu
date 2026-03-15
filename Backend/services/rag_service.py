@@ -9,6 +9,36 @@ sys.path.append(str(AI_SERVICE_PATH))
 from src.rag.retriever import retrieve_sops
 
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+MODEL_CANDIDATES = [
+    os.environ.get("GROQ_CHAT_MODEL", "").strip(),
+    "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
+]
+
+
+def _chat_with_fallback(system_prompt: str, question: str, user_answer: str) -> str:
+    last_error = None
+    for model_name in MODEL_CANDIDATES:
+        if not model_name:
+            continue
+        try:
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Question: {question}\nWorker Answer: {user_answer}"}
+                ],
+                temperature=0.2,
+                max_tokens=120
+            )
+            return completion.choices[0].message.content.strip()
+        except Exception as exc:
+            last_error = exc
+            print(f"RAG model '{model_name}' failed: {exc}")
+
+    if last_error:
+        raise last_error
+    raise ValueError("No chat model configured for RAG responses.")
 
 def rag_query(question: str, user_answer: str):
     try:
@@ -32,18 +62,7 @@ RULES:
 - Then gently correct missing safety steps.
 - Do NOT quote SOPs directly.
 """
-
-        completion = client.chat.completions.create(
-            model="llama3-8b-8192",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Question: {question}\nWorker Answer: {user_answer}"}
-            ],
-            temperature=0.2,
-            max_tokens=120
-        )
-
-        return completion.choices[0].message.content.strip()
+        return _chat_with_fallback(system_prompt, question, user_answer)
 
     except Exception as e:
         print(f"RAG Error: {e}")
