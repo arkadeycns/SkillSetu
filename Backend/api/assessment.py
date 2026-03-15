@@ -14,7 +14,7 @@ from AI_Service.src.engine.question_bank import list_categories
 from AI_Service.src.engine.translator import translate_to_english
 
 # AI modules
-from AI_Service.src.vision.analyser import evaluate_competency
+from AI_Service.src.vision.analyzer import evaluate_competency
 from AI_Service.src.stt.transcriber import transcribe_audio
 from AI_Service.src.rag.retriever import retrieve_sops
 
@@ -76,7 +76,7 @@ async def process_voice_assessment(
         if os.path.exists(temp_input_path):
             os.remove(temp_input_path)
         print(f"CRITICAL ERROR: {exc}")
-        return {"error": str(exc)}
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/categories")

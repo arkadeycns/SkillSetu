@@ -4,6 +4,6 @@ python-multipart==0.0.20
 
 groq==1.1.0
 google-genai==1.66.0
-pinecone-client==6.0.0
+pinecone==7.3.0
 gTTS==2.5.4
 python-dotenv==1.2.2

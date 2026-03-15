@@ -7,7 +7,7 @@ router = APIRouter(prefix="/api/v1")
 @router.post("/rag")
 def rag(request: RagRequest):
 
-    answer = rag_query(request.question)
+    answer = rag_query(request.question, request.user_answer)
 
     return {
         "answer": answer

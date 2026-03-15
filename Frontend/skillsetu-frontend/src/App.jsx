@@ -7,7 +7,7 @@ import Result from "./pages/Result";
 import Wallet from "./pages/Wallet";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
-import Dashboard from "./pages/Dashboard";
+import Dashboard from "./pages/DashBoard";
 
 function App() {
   return (
