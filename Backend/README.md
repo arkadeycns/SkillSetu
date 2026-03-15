@@ -273,7 +273,9 @@ Create a `.env` file in the project root directory.
 Example configuration:
 
 GROQ_API_KEY=your_groq_api_key
+
 GEMINI_API_KEY=your_gemini_api_key
+
 QUESTION_BANK_PATH=path_to_question_bank
 
 Environment variables are loaded securely using **python-dotenv**.
@@ -365,4 +367,4 @@ Planned improvements include:
 * FastAPI Architecture
 * AI Service Integration
 
-GitHub:https://github.com/apoorva-ppl
+GitHub: https://github.com/apoorva-ppl
