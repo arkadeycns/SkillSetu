@@ -55,31 +55,6 @@ The backend leverages modern technologies optimized for high-performance API sys
 
 ---
 
-## Project Structure
-
-The project is organized using a modular architecture to maintain clarity and scalability.
-
-Backend/
-│
-├── api/
-│ ├── tts.py # Text-to-Speech API
-│ ├── stt.py # Speech-to-Text API
-│ ├── rag.py # Retrieval-Augmented Generation API
-│ ├── heatmap.py # Skill analytics endpoints
-│ ├── skill_wallet.py # User skill tracking
-│ ├── assessment.py # Assessment workflow APIs
-│ └── admin.py # Admin management APIs
-│
-├── AI_services/
-│ ├── interface.py # Central AI interface layer
-│ ├── tts_service.py # Speech generation logic
-│ └── stt_service.py # Speech transcription logic
-│
-├── main.py # FastAPI application entrypoint
-├── requirements.txt # Project dependencies
-├── .env # Environment variables
-└── README.md # Project documentation
-
 ---
 
 # API Endpoints
