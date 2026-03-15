@@ -1,12 +1,15 @@
 // frontend/src/api/aiService.js
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const ASSESS_VOICE_ENDPOINT = `${API_BASE_URL}/api/assessment/assess-voice`;
+
 export const sendAudioToAI = async (audioBlob) => {
   const formData = new FormData();
   const extension = audioBlob?.type?.includes("mp4") ? "m4a" : "webm";
   formData.append("audio", audioBlob, `interview_audio.${extension}`);
 
   try {
-    const response = await fetch("http://localhost:8000/api/assessment/assess-voice", {
+    const response = await fetch(ASSESS_VOICE_ENDPOINT, {
       method: "POST",
       body: formData,
     });

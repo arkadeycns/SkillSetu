@@ -11,7 +11,7 @@ from AI_Service.src.engine.counter_generator import generate_counter_questions
 from AI_Service.src.engine.question_bank import list_categories
 
 # NLP utilities
-from AI_Service.src.engine.translator import translate_to_english
+from AI_Service.src.engine.translator import translate_to_english, translate_to_user_language
 
 # AI modules
 from AI_Service.src.vision.analyzer import evaluate_competency
@@ -58,13 +58,25 @@ async def process_voice_assessment(
 
     try:
         stt_result = transcribe_audio(temp_input_path)
-        user_text = stt_result[0] if isinstance(stt_result, tuple) else stt_result
+        if isinstance(stt_result, tuple):
+            user_text = stt_result[0]
+            user_lang = stt_result[1] if len(stt_result) > 1 else "en"
+        else:
+            user_text = stt_result
+            user_lang = "en"
         print(f"STT Output: {user_text}")
 
-        ai_feedback = rag_query(resolved_question, user_text)
-        print(f"RAG Output: {ai_feedback}")
+        english_user_text = translate_to_english(user_text, user_lang) if user_text else ""
 
-        output_audio_path = generate_speech(ai_feedback)
+        ai_feedback_en = rag_query(resolved_question, english_user_text)
+        print(f"RAG Output (EN): {ai_feedback_en}")
+
+        if (user_lang or "").lower().startswith("en"):
+            ai_feedback_localized = ai_feedback_en
+        else:
+            ai_feedback_localized = translate_to_user_language(ai_feedback_en, user_lang)
+
+        output_audio_path = generate_speech(ai_feedback_localized, user_lang)
 
         if os.path.exists(temp_input_path):
             os.remove(temp_input_path)
