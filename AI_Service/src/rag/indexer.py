@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 from typing import Dict, Iterable, List
 from uuid import uuid4
 
 from google import genai
-from pinecone import Pinecone
+from pinecone import Pinecone, ServerlessSpec
 
 from src.config import GEMINI_API_KEY, PINECONE_API_KEY
 
-INDEX_NAME = "skillsetu-sops"
-EMBED_MODEL = "text-embedding-004"
+INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "skillsetu-sops-3072")
+EMBED_MODEL = "gemini-embedding-001"
+PINECONE_CLOUD = os.environ.get("PINECONE_CLOUD", "aws")
+PINECONE_REGION = os.environ.get("PINECONE_REGION", "us-east-1")
 
 
 def _chunk_text(raw_text: str) -> List[str]:
@@ -38,6 +41,30 @@ def _batch(iterable: List[str], size: int) -> Iterable[List[str]]:
         yield iterable[i : i + size]
 
 
+def _ensure_index(pinecone: Pinecone, dimension: int) -> None:
+    try:
+        description = pinecone.describe_index(INDEX_NAME)
+        existing_dimension = int(getattr(description, "dimension", description["dimension"]))
+        if existing_dimension != dimension:
+            raise ValueError(
+                f"Index '{INDEX_NAME}' has dimension {existing_dimension}, but embedding model uses {dimension}. "
+                "Use a different PINECONE_INDEX_NAME or recreate the index with matching dimension."
+            )
+        return
+    except Exception as exc:
+        # If describe_index fails because index doesn't exist, create it.
+        message = str(exc).lower()
+        if "not found" not in message and "does not exist" not in message and "404" not in message:
+            raise
+
+    pinecone.create_index(
+        name=INDEX_NAME,
+        dimension=dimension,
+        metric="cosine",
+        spec=ServerlessSpec(cloud=PINECONE_CLOUD, region=PINECONE_REGION),
+    )
+
+
 def index_sops_from_file(file_path: str, batch_size: int = 25) -> Dict[str, int]:
     """Read SOP file, embed chunks, and upsert to Pinecone in batches."""
     if not GEMINI_API_KEY:
@@ -56,13 +83,16 @@ def index_sops_from_file(file_path: str, batch_size: int = 25) -> Dict[str, int]
 
     genai_client = genai.Client(api_key=GEMINI_API_KEY)
     pinecone = Pinecone(api_key=PINECONE_API_KEY)
+
+    sample_embedding = _embed_text(genai_client, chunks[0])
+    _ensure_index(pinecone, dimension=len(sample_embedding))
     index = pinecone.Index(INDEX_NAME)
 
     total_upserted = 0
     for group in _batch(chunks, batch_size):
         vectors = []
-        for chunk in group:
-            embedding = _embed_text(genai_client, chunk)
+        for idx, chunk in enumerate(group):
+            embedding = sample_embedding if total_upserted == 0 and idx == 0 else _embed_text(genai_client, chunk)
             vectors.append(
                 {
                     "id": str(uuid4()),

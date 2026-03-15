@@ -1,5 +1,6 @@
 import sys
 import os
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 # --- DEBUG SHIELD START ---
@@ -32,8 +33,20 @@ from api.skill_wallet import router as skill_wallet_router
 from api.assessment import router as assessment_router
 from api.admin import router as admin_router
 from api.audio import router as audio_router
+from services.bootstrap_service import ensure_ai_service_ready
 
-app = FastAPI(title="SkillSetu Backend")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    try:
+        result = ensure_ai_service_ready()
+        print("[startup] AI service bootstrap complete:", result)
+    except Exception as exc:
+        print("[startup] AI service bootstrap failed:", exc)
+    yield
+
+
+app = FastAPI(title="SkillSetu Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

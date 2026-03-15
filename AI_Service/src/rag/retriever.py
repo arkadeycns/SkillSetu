@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import List
 
 from google import genai
@@ -9,8 +10,8 @@ from pinecone import Pinecone
 
 from src.config import GEMINI_API_KEY, PINECONE_API_KEY
 
-INDEX_NAME = "skillsetu-sops"
-EMBED_MODEL = "text-embedding-004"
+INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "skillsetu-sops-3072")
+EMBED_MODEL = "gemini-embedding-001"
 
 
 def _embed_query(client: genai.Client, text: str) -> List[float]:
@@ -33,6 +34,12 @@ def retrieve_sops(query_text: str, top_k: int = 3) -> str:
     query_embedding = _embed_query(genai_client, query_text.strip())
 
     pinecone = Pinecone(api_key=PINECONE_API_KEY)
+    try:
+        pinecone.describe_index(INDEX_NAME)
+    except Exception:
+        # If index is missing, let caller fall back gracefully.
+        return ""
+
     index = pinecone.Index(INDEX_NAME)
 
     results = index.query(vector=query_embedding, top_k=top_k, include_metadata=True)

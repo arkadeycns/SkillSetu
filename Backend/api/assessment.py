@@ -1,6 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse
 import os
 import shutil
+import time
 from uuid import uuid4
 
 # Interview engine
@@ -16,6 +18,9 @@ from AI_Service.src.vision.analyser import evaluate_competency
 from AI_Service.src.stt.transcriber import transcribe_audio
 from AI_Service.src.rag.retriever import retrieve_sops
 
+from services.rag_service import rag_query
+from services.tts_service import generate_speech
+from services.bootstrap_service import get_next_assessment_question
 
 router = APIRouter(prefix="/api/assessment", tags=["Assessment"])
 
@@ -23,6 +28,55 @@ manager = InterviewManager()
 
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
+
+
+def remove_temp_file(path: str):
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except Exception as exc:
+            print(f"Cleanup error: {exc}")
+
+
+@router.post("/assess-voice")
+async def process_voice_assessment(
+    audio: UploadFile = File(...),
+    question: str | None = Form(None),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+):
+    os.makedirs("temp_data", exist_ok=True)
+    os.makedirs("audio", exist_ok=True)
+
+    temp_input_path = f"temp_data/incoming_{int(time.time())}_{audio.filename}"
+
+    with open(temp_input_path, "wb") as buffer:
+        shutil.copyfileobj(audio.file, buffer)
+
+    resolved_question = (question or "").strip()
+    if not resolved_question:
+        resolved_question = get_next_assessment_question()
+
+    try:
+        stt_result = transcribe_audio(temp_input_path)
+        user_text = stt_result[0] if isinstance(stt_result, tuple) else stt_result
+        print(f"STT Output: {user_text}")
+
+        ai_feedback = rag_query(resolved_question, user_text)
+        print(f"RAG Output: {ai_feedback}")
+
+        output_audio_path = generate_speech(ai_feedback)
+
+        if os.path.exists(temp_input_path):
+            os.remove(temp_input_path)
+
+        background_tasks.add_task(remove_temp_file, output_audio_path)
+        return FileResponse(output_audio_path, media_type="audio/mpeg")
+
+    except Exception as exc:
+        if os.path.exists(temp_input_path):
+            os.remove(temp_input_path)
+        print(f"CRITICAL ERROR: {exc}")
+        return {"error": str(exc)}
 
 
 @router.get("/categories")

@@ -1,0 +1,20 @@
+{
+  "categories": [
+    {
+      "id": "default-skill",
+      "title": "Default Skill",
+      "questions": [
+        {"id": "q1", "text": "Tell me about yourself."},
+        {"id": "q2", "text": "What does this skill mean to you?"},
+        {"id": "q3", "text": "Describe one practical scenario where you used this skill."},
+        {"id": "q4", "text": "How do you prepare before starting a task?"},
+        {"id": "q5", "text": "What safety or quality checks do you follow?"},
+        {"id": "q6", "text": "How do you handle mistakes during work?"},
+        {"id": "q7", "text": "How do you prioritize when multiple tasks are pending?"},
+        {"id": "q8", "text": "How do you communicate progress to teammates?"},
+        {"id": "q9", "text": "What would you improve in your current workflow?"},
+        {"id": "q10", "text": "Why should we select you for this role?"}
+      ]
+    }
+  ]
+}
