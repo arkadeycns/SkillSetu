@@ -1,3 +1,5 @@
+from stt.transcriber import transcribe_audio as stt_engine
+
+
 def transcribe_audio(file):
-    # dummy transcription
-    return "This is a dummy transcription from Whisper"
+    return stt_engine(file)
