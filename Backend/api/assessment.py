@@ -132,14 +132,27 @@ async def process_voice_assessment(
         print("Current question:", question)
 
         # --------------------------------------------------
-        # STT WITHOUT LANGUAGE AUTO-DETECT
+        # STT WITHOUT LANGUAGE AUTO-DETECT (FIXED)
         # --------------------------------------------------
 
         user_lang = session.language
 
-        print("Running Speech-to-Text with language:", user_lang)
+        # Map the full language word from the frontend to the 2-letter STT code
+        whisper_lang_map = {
+            "english": "en",
+            "hindi": "hi",
+            "hinglish": "hi", # Route Hinglish to Hindi STT
+            "tamil": "ta",
+            "telugu": "te",
+            "bengali": "bn"
+        }
+        
+        # Get the 2-letter code, default to "en" if not found
+        stt_lang_code = whisper_lang_map.get(user_lang.lower(), "en")
 
-        user_text = transcribe_audio(temp_input_path, language=user_lang)
+        print(f"Running Speech-to-Text with mapped language code: {stt_lang_code} (Original: {user_lang})")
+
+        user_text = transcribe_audio(temp_input_path, language=stt_lang_code)
 
         print("User speech:", user_text)
 
