@@ -34,6 +34,7 @@ from api.assessment import router as assessment_router
 from api.admin import router as admin_router
 from api.audio import router as audio_router
 from services.bootstrap_service import ensure_ai_service_ready
+from api.resume_parser import router as resume_router
 
 
 @asynccontextmanager
@@ -67,6 +68,7 @@ app.include_router(skill_wallet_router)
 app.include_router(assessment_router)
 app.include_router(admin_router)
 app.include_router(audio_router)
+app.include_router(resume_router)
 
 @app.get("/health")
 def health():
