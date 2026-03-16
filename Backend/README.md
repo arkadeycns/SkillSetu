@@ -361,7 +361,7 @@ Planned improvements include:
 
 # Maintainer
 
-**Apoorva Pandey**
+**SkillSetu Backend Team**
 
 * Backend Development
 * FastAPI Architecture
