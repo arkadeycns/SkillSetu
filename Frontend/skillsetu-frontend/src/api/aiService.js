@@ -1,41 +1,37 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const ASSESS_VOICE_ENDPOINT = `${API_BASE_URL}/api/assessment/assess-voice`;
-const START_SESSION_ENDPOINT = `${API_BASE_URL}/api/assessment/start-session`; // Updated path
+const START_SESSION_ENDPOINT = `${API_BASE_URL}/api/assessment/start-session`;
 
 // ------------------------------------------------------------------
 // 1. START SESSION (The Handshake)
 // ------------------------------------------------------------------
 export const startInterviewSession = async (skill, language) => {
   try {
-    // Backend expects Form data, not JSON
     const formData = new FormData();
     formData.append("skill", skill);
     formData.append("language", language);
 
     const response = await fetch(START_SESSION_ENDPOINT, {
       method: "POST",
-      body: formData, // Browser sets multipart/form-data automatically
+      body: formData, 
     });
 
     if (!response.ok) throw new Error("Failed to start AI session");
 
-    // Backend returns: { session_id, question, audio_base64 }
     const data = await response.json();
 
-    // Magic trick: Convert the Base64 audio string into a playable URL
-    const audioRes = await fetch(`data:audio/mpeg;base64,${data.audio_base64}`);
-    const audioBlob = await audioRes.blob();
-    const audioUrl = URL.createObjectURL(audioBlob);
+    // FIXED: Catch the new "audio" key your friend used!
+    const audioUrl = `data:audio/mpeg;base64,${data.audio}`;
 
     return { 
       sessionId: data.session_id, 
-      initialQuestionText: data.question, // The translated text
-      initialAudioUrl: audioUrl       // The real AI voice file!
+      initialQuestionText: data.question, 
+      initialAudioUrl: audioUrl       
     };
 
   } catch (error) {
     console.error("Error starting session:", error);
-    throw error;
+    throw error; 
   }
 };
 
@@ -46,10 +42,7 @@ export const sendAudioToAI = async (audioBlob, sessionId) => {
   const formData = new FormData();
   const extension = audioBlob?.type?.includes("mp4") ? "m4a" : "webm";
   
-  // 1. Attach the user's voice
   formData.append("audio", audioBlob, `interview_audio.${extension}`);
-  
-  // 2. Attach the Session ID so the backend knows who is talking
   formData.append("session_id", sessionId);
 
   try {
@@ -67,14 +60,40 @@ export const sendAudioToAI = async (audioBlob, sessionId) => {
       throw new Error(`Backend error: ${detail}`);
     }
 
-    // Backend returns raw audio bytes
-    const aiResponseBlob = await response.blob();
-    const aiAudioUrl = URL.createObjectURL(aiResponseBlob);
+    // FIXED: The backend now returns JSON, not a raw file!
+    const data = await response.json();
     
-    return { audioUrl: aiAudioUrl };
+    // Convert the base64 string directly into a playable URL
+    const aiAudioUrl = `data:audio/mpeg;base64,${data.audio}`;
+    
+    // We now return BOTH the audio and the new "interviewer_text" 
+    return { 
+      audioUrl: aiAudioUrl,
+      text: data.interviewer_text 
+    };
 
   } catch (error) {
     console.error("API Error connecting to Backend:", error);
     return { error: error?.message || "Unable to process voice response." };
+  }
+};
+
+// ------------------------------------------------------------------
+// 3. GET INTERVIEW SUMMARY & RESULT
+// ------------------------------------------------------------------
+export const getInterviewSummary = async (sessionId) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/assessment/${sessionId}/summary`);
+    
+    if (!response.ok) {
+      throw new Error("Failed to fetch summary from backend.");
+    }
+    
+    const data = await response.json();
+    return data;
+    
+  } catch (error) {
+    console.error("API Error fetching summary:", error);
+    return null; 
   }
 };

@@ -32,9 +32,9 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/chooseskill" element={<ChooseSkill />} />
           <Route path="/interview" element={<AIInterview />} />
-          <Route path="/result" element={<Result />} />
           <Route path="/wallet" element={<Wallet />} /> 
           <Route path="/regional-reports" element={<RegionalReports />} />
+          <Route path="/result" element={<Result />} />
         </Routes>
       </BrowserRouter>
     </ClerkProvider>
