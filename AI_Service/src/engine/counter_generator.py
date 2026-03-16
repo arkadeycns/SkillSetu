@@ -1,83 +1,64 @@
-"""Generate adaptive counter questions from SOP guidance and detected gaps."""
+# src/engine/counter_generator.py
 
-from __future__ import annotations
+from groq import Groq
+from src.config import GROQ_API_KEY
 
-import json
-from typing import List
+client = Groq(api_key=GROQ_API_KEY)
 
-from google import genai
-from google.genai import types
 
-from src.config import GEMINI_API_KEY
+def _generate(prompt: str) -> str:
+    """Internal helper to call Groq LLM."""
 
-MODEL_NAME = "gemini-1.5-flash"
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3,
+    )
+
+    return response.choices[0].message.content.strip()
 
 
 def generate_counter_questions(
-    primary_question: str,
-    user_answer_en: str,
-    identified_gaps: List[str],
-    sop_context: str,
-    count: int = 2,
-    previous_questions: List[str] | None = None,
-) -> List[str]:
-    """Generate exactly `count` non-repetitive counter questions in English."""
-    if not GEMINI_API_KEY:
-        raise ValueError("Missing GEMINI_API_KEY in environment.")
+    primary_question,
+    user_answer_en,
+    identified_gaps,
+    sop_context,
+    count=2,
+    previous_questions=None
+):
+    """
+    Generate follow-up counter questions using Groq LLM.
+    """
 
-    previous = previous_questions or []
+    if previous_questions is None:
+        previous_questions = []
 
     prompt = f"""
-You are creating short follow-up interview questions for vocational skill assessment.
-Use SOP context for probing strategy. Do not repeat previously asked counters.
+You are an expert vocational skills assessor.
 
-Rules:
-- Return exactly {count} counter questions.
-- Each question must target a missed step/safety gap.
-- Keep each question under 20 words.
-- Keep language simple and practical for blue-collar workers.
-- Output must be STRICT JSON with key `counter_questions` (array of strings).
-
-Primary question:
+Primary question asked:
 {primary_question}
 
 Candidate answer:
 {user_answer_en}
 
-Identified gaps:
-{json.dumps(identified_gaps, ensure_ascii=True)}
+Identified skill gaps:
+{identified_gaps}
 
-Previously asked counters:
-{json.dumps(previous, ensure_ascii=True)}
-
-SOP context:
+Relevant SOP context:
 {sop_context}
-""".strip()
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt,
-        config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2),
-    )
+Previously asked follow-up questions:
+{previous_questions}
 
-    raw = (response.text or "").strip()
-    if not raw:
-        raise ValueError("Counter question generator returned an empty response.")
+Generate {count} follow-up interview questions that test the candidate's
+understanding and fill the skill gaps.
 
-    parsed = json.loads(raw)
-    questions = parsed.get("counter_questions", []) if isinstance(parsed, dict) else []
-    cleaned = [str(item).strip() for item in questions if str(item).strip()]
+Return ONLY the questions, each on a new line.
+"""
 
-    # Force exact count with deterministic fallbacks if model under-returns.
-    fallback_pool = [
-        "What safety step did you miss before starting this task?",
-        "How would you verify quality before final handover?",
-    ]
-    for fallback in fallback_pool:
-        if len(cleaned) >= count:
-            break
-        if fallback not in cleaned and fallback not in previous:
-            cleaned.append(fallback)
+    response = _generate(prompt)
 
-    return cleaned[:count]
+    questions = [q.strip() for q in response.split("\n") if q.strip()]
+
+    return questions[:count]

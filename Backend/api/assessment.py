@@ -1,9 +1,9 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import os
 import shutil
 import time
-from uuid import uuid4
+import base64
 
 # Interview engine
 from AI_Service.src.engine.interview_manager import InterviewManager
@@ -27,7 +27,12 @@ router = APIRouter(prefix="/api/assessment", tags=["Assessment"])
 manager = InterviewManager()
 
 DATA_DIR = "data"
+TEMP_DIR = "temp_data"
+AUDIO_DIR = "audio"
+
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(AUDIO_DIR, exist_ok=True)
 
 
 def remove_temp_file(path: str):
@@ -35,162 +40,135 @@ def remove_temp_file(path: str):
         try:
             os.remove(path)
         except Exception as exc:
-            print(f"Cleanup error: {exc}")
+            print("Cleanup error:", exc)
 
+
+# ==========================================================
+# START SESSION (FRONTEND HANDSHAKE)
+# ==========================================================
+
+@router.post("/start-session")
+def start_session(
+    skill: str = Form(...),
+    language: str = Form(...)
+):
+
+    print("\n==============================")
+    print("START SESSION REQUEST RECEIVED")
+    print("Skill:", skill)
+    print("Language:", language)
+    print("==============================")
+
+    try:
+
+        session = manager.start_session(category_id=skill)
+        print("Session created:", session.session_id)
+
+        prompt = manager.get_current_prompt(session)
+        print("Prompt loaded:", prompt)
+
+        question_en = prompt["question"]
+
+        if language.lower().startswith("en"):
+            localized_question = question_en
+        else:
+            localized_question = translate_to_user_language(question_en, language)
+
+        print("Localized Question:", localized_question)
+
+        print("Generating TTS audio...")
+        audio_path = generate_speech(localized_question, language)
+        print("Audio generated at:", audio_path)
+
+        # convert audio → base64
+        with open(audio_path, "rb") as f:
+            audio_bytes = f.read()
+
+        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+        return JSONResponse({
+            "session_id": session.session_id,
+            "question": localized_question,
+            "audio_base64": audio_base64
+        })
+
+    except Exception as exc:
+
+        print("\n!!!!! START SESSION ERROR !!!!!")
+        print(exc)
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
+
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ==========================================================
+# VOICE INTERVIEW LOOP
+# ==========================================================
 
 @router.post("/assess-voice")
 async def process_voice_assessment(
     audio: UploadFile = File(...),
-    question: str | None = Form(None),
+    session_id: str = Form(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
-    os.makedirs("temp_data", exist_ok=True)
-    os.makedirs("audio", exist_ok=True)
 
-    temp_input_path = f"temp_data/incoming_{int(time.time())}_{audio.filename}"
+    print("\n==============================")
+    print("VOICE ASSESSMENT REQUEST")
+    print("Session ID:", session_id)
+    print("==============================")
+
+    temp_input_path = f"{TEMP_DIR}/incoming_{int(time.time())}_{audio.filename}"
 
     with open(temp_input_path, "wb") as buffer:
         shutil.copyfileobj(audio.file, buffer)
 
-    resolved_question = (question or "").strip()
-    if not resolved_question:
-        resolved_question = get_next_assessment_question()
-
     try:
+
+        session = manager.get_session(session_id)
+        print("Session loaded")
+
+        prompt = manager.get_current_prompt(session)
+        question = prompt["question"]
+
+        print("Current question:", question)
+
+        # STT
+        print("Running Speech-to-Text...")
         stt_result = transcribe_audio(temp_input_path)
+
         if isinstance(stt_result, tuple):
             user_text = stt_result[0]
             user_lang = stt_result[1] if len(stt_result) > 1 else "en"
         else:
             user_text = stt_result
             user_lang = "en"
-        print(f"STT Output: {user_text}")
+
+        print("User speech:", user_text)
+        print("Detected language:", user_lang)
 
         english_user_text = translate_to_english(user_text, user_lang) if user_text else ""
 
-        ai_feedback_en = rag_query(resolved_question, english_user_text)
-        print(f"RAG Output (EN): {ai_feedback_en}")
+        print("Translated answer:", english_user_text)
 
-        if (user_lang or "").lower().startswith("en"):
-            ai_feedback_localized = ai_feedback_en
-        else:
-            ai_feedback_localized = translate_to_user_language(ai_feedback_en, user_lang)
+        # RAG
+        print("Running RAG query...")
+        ai_feedback_en = rag_query(question, english_user_text)
 
-        output_audio_path = generate_speech(ai_feedback_localized, user_lang)
-
-        if os.path.exists(temp_input_path):
-            os.remove(temp_input_path)
-
-        background_tasks.add_task(remove_temp_file, output_audio_path)
-        return FileResponse(output_audio_path, media_type="audio/mpeg")
-
-    except Exception as exc:
-        if os.path.exists(temp_input_path):
-            os.remove(temp_input_path)
-        print(f"CRITICAL ERROR: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@router.get("/categories")
-def get_assessment_categories():
-    try:
-        categories = list_categories()
-        return {"categories": categories}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-@router.post("/start")
-def start_assessment(category_id: str = Form(...)):
-    try:
-        session = manager.start_session(category_id=category_id)
-        prompt = manager.get_current_prompt(session)
-
-        return {
-            "session_id": session.session_id,
-            "category_id": session.category_id,
-            "next_prompt": prompt
-        }
-
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@router.get("/{session_id}/next")
-def get_next_prompt(session_id: str):
-    try:
-        session = manager.get_session(session_id)
-        prompt = manager.get_current_prompt(session)
-
-        return {
-            "session_id": session.session_id,
-            "category_id": session.category_id,
-            "next_prompt": prompt
-        }
-
-    except Exception as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-
-
-@router.post("/{session_id}/answer")
-async def submit_answer(
-    session_id: str,
-    audio: UploadFile = File(...),
-    image: UploadFile = File(...)
-):
-
-    request_id = uuid4().hex
-
-    audio_path = f"{DATA_DIR}/{request_id}_audio.wav"
-    image_path = f"{DATA_DIR}/{request_id}_image.jpg"
-
-    try:
-
-        with open(audio_path, "wb") as f:
-            shutil.copyfileobj(audio.file, f)
-
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(image.file, f)
-
-        session = manager.get_session(session_id)
-        prompt = manager.get_current_prompt(session)
-
-        # Speech → Text
-        original_text, user_lang = transcribe_audio(audio_path)
-
-        # Translate to English
-        english_text = translate_to_english(original_text, user_lang)
-
-        # Build retrieval query
-        retrieval_query = f"""
-        Category: {session.category_id}
-        Question: {prompt['question']}
-        Candidate answer: {english_text}
-        """
-
-        # Retrieve SOP context
-        sop_context = retrieve_sops(retrieval_query)
-
-        # Evaluate competency
-        evaluation = evaluate_competency(
-            image_path=image_path,
-            user_transcript=english_text,
-            sop_context=sop_context
-        )
+        print("RAG output:", ai_feedback_en)
 
         manager.record_answer(
             session,
-            answer_en=english_text,
-            evaluation=evaluation
+            answer_en=english_user_text,
+            evaluation={"feedback": ai_feedback_en}
         )
 
         if prompt["stage"] == "primary":
 
             counters = generate_counter_questions(
-                primary_question=prompt["question"],
-                user_answer_en=english_text,
-                identified_gaps=evaluation.get("identified_gaps", []),
-                sop_context=sop_context,
+                primary_question=question,
+                user_answer_en=english_user_text,
+                identified_gaps=[],
+                sop_context="",
                 count=2,
                 previous_questions=[]
             )
@@ -201,32 +179,75 @@ async def submit_answer(
             manager.advance_after_counter(session)
 
         next_prompt = manager.get_current_prompt(session)
+        next_question = next_prompt["question"]
 
-        return {
-            "session_id": session.session_id,
-            "transcript_original": original_text,
-            "transcript_english": english_text,
-            "evaluation": evaluation,
-            "next_prompt": next_prompt
-        }
+        print("Next question:", next_question)
+
+        if user_lang.lower().startswith("en"):
+            localized_question = next_question
+        else:
+            localized_question = translate_to_user_language(next_question, user_lang)
+
+        print("Localized next question:", localized_question)
+
+        print("Generating next TTS audio...")
+        output_audio_path = generate_speech(localized_question, user_lang)
+
+        background_tasks.add_task(remove_temp_file, output_audio_path)
+
+        if os.path.exists(temp_input_path):
+            os.remove(temp_input_path)
+
+        print("Voice assessment completed\n")
+
+        return FileResponse(output_audio_path, media_type="audio/mpeg")
 
     except Exception as exc:
+
+        print("\n!!!!! VOICE ASSESSMENT ERROR !!!!!")
+        print(exc)
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
+
+        if os.path.exists(temp_input_path):
+            os.remove(temp_input_path)
+
         raise HTTPException(status_code=500, detail=str(exc))
 
-    finally:
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
 
-        if os.path.exists(image_path):
-            os.remove(image_path)
+# ==========================================================
+# GET CATEGORIES
+# ==========================================================
 
+@router.get("/categories")
+def get_assessment_categories():
+
+    print("Fetching categories...")
+
+    try:
+        categories = list_categories()
+        return {"categories": categories}
+
+    except Exception as exc:
+
+        print("CATEGORY FETCH ERROR:", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ==========================================================
+# SESSION SUMMARY
+# ==========================================================
 
 @router.get("/{session_id}/summary")
 def get_summary(session_id: str):
 
+    print("Summary requested for session:", session_id)
+
     try:
+
         session = manager.get_session(session_id)
         return manager.summarize(session)
 
     except Exception as exc:
+
+        print("SUMMARY ERROR:", exc)
         raise HTTPException(status_code=404, detail=str(exc))
