@@ -14,13 +14,10 @@ from AI_Service.src.engine.question_bank import list_categories
 from AI_Service.src.engine.translator import translate_to_english, translate_to_user_language
 
 # AI modules
-from AI_Service.src.vision.analyzer import evaluate_competency
 from AI_Service.src.stt.transcriber import transcribe_audio
-from AI_Service.src.rag.retriever import retrieve_sops
 
 from services.rag_service import rag_query
 from services.tts_service import generate_speech
-from services.bootstrap_service import get_next_assessment_question
 
 router = APIRouter(prefix="/api/assessment", tags=["Assessment"])
 
@@ -44,7 +41,7 @@ def remove_temp_file(path: str):
 
 
 # ==========================================================
-# START SESSION (FRONTEND HANDSHAKE)
+# START SESSION (AI INITIATES INTERVIEW)
 # ==========================================================
 
 @router.post("/start-session")
@@ -62,11 +59,13 @@ def start_session(
     try:
 
         session = manager.start_session(category_id=skill)
+
+        # store language inside session
+        session.language = language
+
         print("Session created:", session.session_id)
 
         prompt = manager.get_current_prompt(session)
-        print("Prompt loaded:", prompt)
-
         question_en = prompt["question"]
 
         if language.lower().startswith("en"):
@@ -77,10 +76,10 @@ def start_session(
         print("Localized Question:", localized_question)
 
         print("Generating TTS audio...")
-        audio_path = generate_speech(localized_question, language)
+        audio_path = generate_speech(localized_question, session.language)
+
         print("Audio generated at:", audio_path)
 
-        # convert audio → base64
         with open(audio_path, "rb") as f:
             audio_bytes = f.read()
 
@@ -132,27 +131,42 @@ async def process_voice_assessment(
 
         print("Current question:", question)
 
-        # STT
-        print("Running Speech-to-Text...")
-        stt_result = transcribe_audio(temp_input_path)
+        # --------------------------------------------------
+        # STT WITHOUT LANGUAGE AUTO-DETECT
+        # --------------------------------------------------
 
-        if isinstance(stt_result, tuple):
-            user_text = stt_result[0]
-            user_lang = stt_result[1] if len(stt_result) > 1 else "en"
-        else:
-            user_text = stt_result
-            user_lang = "en"
+        user_lang = session.language
+
+        print("Running Speech-to-Text with language:", user_lang)
+
+        user_text = transcribe_audio(temp_input_path, language=user_lang)
 
         print("User speech:", user_text)
-        print("Detected language:", user_lang)
 
-        english_user_text = translate_to_english(user_text, user_lang) if user_text else ""
+        # --------------------------------------------------
+        # TRANSLATE TO ENGLISH FOR RAG
+        # --------------------------------------------------
+
+        if user_lang.lower().startswith("en"):
+            english_user_text = user_text
+        else:
+            english_user_text = translate_to_english(user_text, user_lang)
 
         print("Translated answer:", english_user_text)
 
-        # RAG
-        print("Running RAG query...")
-        ai_feedback_en = rag_query(question, english_user_text)
+        # --------------------------------------------------
+        # STATEFUL RAG WITH CHAT HISTORY
+        # --------------------------------------------------
+
+        chat_history = getattr(session, "answers", [])
+
+        print("Running RAG query with session context...")
+
+        ai_feedback_en = rag_query(
+            question,
+            english_user_text,
+            chat_history=chat_history
+        )
 
         print("RAG output:", ai_feedback_en)
 
@@ -161,6 +175,10 @@ async def process_voice_assessment(
             answer_en=english_user_text,
             evaluation={"feedback": ai_feedback_en}
         )
+
+        # --------------------------------------------------
+        # GENERATE NEXT QUESTION
+        # --------------------------------------------------
 
         if prompt["stage"] == "primary":
 
@@ -190,8 +208,13 @@ async def process_voice_assessment(
 
         print("Localized next question:", localized_question)
 
+        # --------------------------------------------------
+        # GENERATE NEXT AUDIO QUESTION
+        # --------------------------------------------------
+
         print("Generating next TTS audio...")
-        output_audio_path = generate_speech(localized_question, user_lang)
+
+        output_audio_path = generate_speech(localized_question, session.language)
 
         background_tasks.add_task(remove_temp_file, output_audio_path)
 
