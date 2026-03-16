@@ -41,7 +41,7 @@ def remove_temp_file(path: str):
 
 
 # ==========================================================
-# START SESSION (AI INITIATES INTERVIEW)
+# START SESSION
 # ==========================================================
 
 @router.post("/start-session")
@@ -60,7 +60,6 @@ def start_session(
 
         session = manager.start_session(category_id=skill)
 
-        # store language inside session
         session.language = language
 
         print("Session created:", session.session_id)
@@ -131,23 +130,17 @@ async def process_voice_assessment(
 
         print("Current question:", question)
 
-        # --------------------------------------------------
-        # STT WITHOUT LANGUAGE AUTO-DETECT (FIXED)
-        # --------------------------------------------------
-
         user_lang = session.language
 
-        # Map the full language word from the frontend to the 2-letter STT code
         whisper_lang_map = {
             "english": "en",
             "hindi": "hi",
-            "hinglish": "hi", # Route Hinglish to Hindi STT
+            "hinglish": "hi",
             "tamil": "ta",
             "telugu": "te",
             "bengali": "bn"
         }
-        
-        # Get the 2-letter code, default to "en" if not found
+
         stt_lang_code = whisper_lang_map.get(user_lang.lower(), "en")
 
         print(f"Running Speech-to-Text with mapped language code: {stt_lang_code} (Original: {user_lang})")
@@ -155,10 +148,6 @@ async def process_voice_assessment(
         user_text = transcribe_audio(temp_input_path, language=stt_lang_code)
 
         print("User speech:", user_text)
-
-        # --------------------------------------------------
-        # TRANSLATE TO ENGLISH FOR RAG
-        # --------------------------------------------------
 
         if user_lang.lower().startswith("en"):
             english_user_text = user_text
@@ -168,7 +157,7 @@ async def process_voice_assessment(
         print("Translated answer:", english_user_text)
 
         # --------------------------------------------------
-        # STATEFUL RAG WITH CHAT HISTORY
+        # STATEFUL RAG
         # --------------------------------------------------
 
         chat_history = getattr(session, "answers", [])
@@ -190,7 +179,7 @@ async def process_voice_assessment(
         )
 
         # --------------------------------------------------
-        # GENERATE NEXT QUESTION
+        # GENERATE FOLLOW-UP / COUNTER QUESTIONS
         # --------------------------------------------------
 
         if prompt["stage"] == "primary":
@@ -198,10 +187,10 @@ async def process_voice_assessment(
             counters = generate_counter_questions(
                 primary_question=question,
                 user_answer_en=english_user_text,
-                identified_gaps=[],
-                sop_context="",
+                identified_gaps=ai_feedback_en,
+                sop_context=ai_feedback_en,
                 count=2,
-                previous_questions=[]
+                previous_questions=chat_history
             )
 
             manager.advance_after_primary(session, counters=counters)
@@ -220,10 +209,6 @@ async def process_voice_assessment(
             localized_question = translate_to_user_language(next_question, user_lang)
 
         print("Localized next question:", localized_question)
-
-        # --------------------------------------------------
-        # GENERATE NEXT AUDIO QUESTION
-        # --------------------------------------------------
 
         print("Generating next TTS audio...")
 
