@@ -1,60 +1,60 @@
+import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { LogOut, Wallet, LayoutDashboard, UserCheck } from "lucide-react"; 
+import { useUser, useClerk, UserButton } from "@clerk/clerk-react"; 
+import { Wallet, LayoutDashboard, UserCheck } from "lucide-react"; 
 
 export default function Navbar() {
   const navigate = useNavigate();
-  const location = useLocation(); // This forces the Navbar to re-render when routes change!
-
-  // Derive state from localStorage
-  const userEmail = localStorage.getItem("userEmail");
+  const { isSignedIn, isLoaded } = useUser();
+  const { signOut } = useClerk();
   const role = localStorage.getItem("role");
-  const isLoggedIn = !!userEmail;
 
-  const logout = () => {
-    // FIX: Clear ALL user data on logout to prevent state bleeding
-    localStorage.removeItem("userEmail");
+  const handleLogout = async () => {
+    // Clear the role from local storage
     localStorage.removeItem("role");
+    // Sign out of Clerk and redirect home
+    await signOut();
     navigate("/");
   };
 
+  if (!isLoaded) return null; // Prevent flicker
+
   return (
-    <nav className="flex justify-between items-center px-8 py-4 bg-white dark:bg-slate-900 shadow-sm border-b border-gray-100 sticky top-0 z-50">
+    <nav className="flex justify-between items-center px-8 py-4 bg-slate-900 shadow-lg border-b border-slate-800 sticky top-0 z-50">
       
-      {/* Logo */}
+      {/* Logo with Golden Gradient */}
       <h1
-        className="text-2xl font-extrabold text-blue-600 cursor-pointer tracking-tight"
+        className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 to-yellow-500 cursor-pointer tracking-tight"
         onClick={() => navigate("/")}
       >
         SkillSetu
       </h1>
 
-      <div className="flex gap-6 items-center">
-        {isLoggedIn ? (
+      <div className="flex gap-8 items-center">
+        {isSignedIn ? (
           <>
-            {/* 1. Government / NGO View */}
             {role === "government" && (
               <button
                 onClick={() => navigate("/dashboard")}
-                className="flex items-center gap-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 font-medium transition-colors"
+                className="flex items-center gap-2 text-slate-300 hover:text-yellow-500 font-medium transition-colors"
               >
                 <LayoutDashboard size={18} />
                 Dashboard
               </button>
             )}
 
-            {/* 2. Worker / Candidate View */}
             {role !== "government" && (
               <>
                 <button
                   onClick={() => navigate("/chooseskill")}
-                  className="flex items-center gap-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 font-medium transition-colors"
+                  className="flex items-center gap-2 text-slate-300 hover:text-yellow-500 font-medium transition-colors"
                 >
                   <UserCheck size={18} />
                   Assessments
                 </button>
                 <button
                   onClick={() => navigate("/wallet")}
-                  className="flex items-center gap-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 font-medium transition-colors"
+                  className="flex items-center gap-2 text-slate-300 hover:text-yellow-500 font-medium transition-colors"
                 >
                   <Wallet size={18} />
                   My Wallet
@@ -62,28 +62,36 @@ export default function Navbar() {
               </>
             )}
 
-            {/* Logout Button */}
-            <button
-              onClick={logout}
-              className="flex items-center gap-2 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 px-4 py-2 rounded-lg font-medium transition-all"
-            >
-              <LogOut size={18} />
-              Logout
-            </button>
+            <div className="flex items-center gap-4 pl-4 border-l border-slate-700">
+              <UserButton 
+                afterSignOutUrl="/" 
+                appearance={{
+                  elements: {
+                    userButtonAvatarBox: "w-10 h-10 border border-yellow-500/50"
+                  }
+                }}
+              />
+              <button
+                onClick={handleLogout}
+                className="text-xs text-slate-500 hover:text-red-400 transition-colors uppercase tracking-widest font-bold"
+              >
+                Logout
+              </button>
+            </div>
           </>
         ) : (
           <>
-            {/* Logged Out View */}
+
             <button
               onClick={() => navigate("/login")}
-              className="text-gray-700 dark:text-gray-200 hover:text-blue-600 font-medium transition-colors"
+              className="text-slate-300 hover:text-yellow-500 font-medium transition-colors"
             >
               Login
             </button>
 
             <button
               onClick={() => navigate("/signup")}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-all shadow-sm hover:shadow-md"
+              className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 px-6 py-2 rounded-lg font-bold transition-all shadow-[0_0_15px_rgba(234,179,8,0.2)]"
             >
               Signup
             </button>

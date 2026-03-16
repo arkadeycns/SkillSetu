@@ -1,10 +1,10 @@
+import React from "react";
 import Layout from "../layout/Layout";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { Users, UserCheck, Activity } from "lucide-react";
+import { Users, UserCheck, Activity, TrendingUp, Award, Briefcase } from "lucide-react";
 
 export default function Dashboard() {
   // --- MOCK DATA ---
-  
   const workers = [
     { name: "Rahul Sharma", skill: "Electrician", result: "PASS", date: "Oct 24" },
     { name: "Aman Gupta", skill: "Plumber", result: "FAIL", date: "Oct 24" },
@@ -23,123 +23,86 @@ export default function Dashboard() {
     { name: "Mechanic", value: 1 },
   ];
 
-  const districtHeatmap = [
-    { name: "Prayagraj", passRate: 45, metric: "Failing Electrical Safety", status: "critical" },
-    { name: "Varanasi", passRate: 78, metric: "Stable Supply", status: "good" },
-    { name: "Kanpur", passRate: 52, metric: "Low Carpentry Skills", status: "warning" },
-    { name: "Lucknow", passRate: 88, metric: "High Competency", status: "excellent" },
-    { name: "Agra", passRate: 35, metric: "Critical Plumbing Shortage", status: "critical" },
-    { name: "Noida", passRate: 92, metric: "Oversupplied", status: "excellent" },
-  ];
-
-  // --- CALCULATIONS & HELPERS ---
-  
+  // --- CALCULATIONS ---
   const totalWorkers = workers.length;
   const passCount = workers.filter((w) => w.result === "PASS").length;
   const passRate = Math.round((passCount / totalWorkers) * 100);
 
-  const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444"];
-
-  const getHeatColor = (status) => {
-    switch(status) {
-      case "critical": return "bg-red-500 text-white shadow-red-200";
-      case "warning": return "bg-amber-400 text-amber-950 shadow-amber-200";
-      case "good": return "bg-emerald-400 text-white shadow-emerald-200";
-      case "excellent": return "bg-emerald-600 text-white shadow-emerald-200";
-      default: return "bg-gray-200 text-gray-800";
-    }
-  };
+  // Premium Gold Palette for Charts
+  const GOLD_COLORS = ["#eab308", "#facc15", "#fef08a", "#a16207"];
 
   return (
     <Layout>
-      <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-slate-900 text-slate-200 py-8 px-4 sm:px-6 lg:px-8 font-sans">
         <div className="max-w-7xl mx-auto space-y-8">
           
-          {/* Header */}
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              Regional Skill Command Center
-            </h1>
-            <p className="text-slate-500 mt-2 text-lg">
-              Live monitoring of district-level vocational competency verification.
-            </p>
+          {/* Header Section */}
+          <div className="bg-slate-800/50 backdrop-blur-md p-8 rounded-3xl border border-slate-700 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-8 opacity-10">
+              <TrendingUp size={120} className="text-yellow-500" />
+            </div>
+            <div className="relative z-10">
+                <div className="inline-block px-3 py-1 bg-yellow-500/10 border border-yellow-500/30 rounded-full text-xs text-yellow-500 tracking-widest uppercase font-bold mb-4">
+                    Official Admin Portal
+                </div>
+                <h1 className="text-4xl font-extrabold text-white tracking-tight">
+                    Skill<span className="text-yellow-500">Setu</span> Command Center
+                </h1>
+                <p className="text-slate-400 mt-2 text-lg max-w-2xl">
+                    National competency oversight. Monitor live AI-verified trade assessments and workforce certification flows.
+                </p>
+            </div>
           </div>
 
           {/* KPI Stat Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
-              <div>
-                <p className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">Total Assessments</p>
-                <h2 className="text-4xl font-bold text-slate-900">{totalWorkers}</h2>
-              </div>
-              <div className="bg-blue-100 p-4 rounded-full">
-                <Users size={32} className="text-blue-600" />
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
-              <div>
-                <p className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">Verified Workers</p>
-                <h2 className="text-4xl font-bold text-emerald-600">{passCount}</h2>
-              </div>
-              <div className="bg-emerald-100 p-4 rounded-full">
-                <UserCheck size={32} className="text-emerald-600" />
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
-              <div>
-                <p className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">Pass Rate</p>
-                <h2 className="text-4xl font-bold text-amber-500">{passRate}%</h2>
-              </div>
-              <div className="bg-amber-100 p-4 rounded-full">
-                <Activity size={32} className="text-amber-600" />
-              </div>
-            </div>
-          </div>
-
-          {/* District-Level Heatmap Section */}
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <div className="flex justify-between items-end mb-6">
-              <div>
-                <h2 className="text-slate-800 text-xl font-bold">District-Level Skill Gap Heatmap</h2>
-                <p className="text-slate-500 text-sm mt-1">Live intervention alerts based on assessment pass rates.</p>
-              </div>
-              <div className="flex gap-3 text-xs font-semibold text-slate-500 uppercase">
-                <span className="flex items-center gap-1"><div className="w-3 h-3 bg-red-500 rounded-full"></div> Critical</span>
-                <span className="flex items-center gap-1"><div className="w-3 h-3 bg-amber-400 rounded-full"></div> Warning</span>
-                <span className="flex items-center gap-1"><div className="w-3 h-3 bg-emerald-500 rounded-full"></div> Healthy</span>
-              </div>
-            </div>
-
-            {/* The CSS Grid Heatmap */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {districtHeatmap.map((district, idx) => (
-                <div 
-                  key={idx} 
-                  className={`${getHeatColor(district.status)} p-5 rounded-xl shadow-sm transition-transform hover:-translate-y-1 cursor-pointer flex flex-col justify-between min-h-[120px]`}
-                >
-                  <div className="flex justify-between items-start">
-                    <h3 className="font-bold text-lg opacity-90">{district.name}</h3>
-                    <span className="text-2xl font-black opacity-80">{district.passRate}%</span>
-                  </div>
-                  <div className="mt-4 text-sm font-medium opacity-90 leading-tight">
-                    {district.status === "critical" && "⚠️ "} 
-                    {district.metric}
-                  </div>
+            
+            {/* Total Assessments */}
+            <div className="bg-slate-800/50 backdrop-blur-md p-6 rounded-2xl border border-slate-700 hover:border-yellow-500/30 transition-all group">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-yellow-500/10 p-3 rounded-xl border border-yellow-500/20 group-hover:scale-110 transition-transform">
+                  <Briefcase size={24} className="text-yellow-500" />
                 </div>
-              ))}
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-tighter">Growth: +12%</span>
+              </div>
+              <p className="text-slate-400 text-sm font-semibold uppercase tracking-wider">Total Assessments</p>
+              <h2 className="text-4xl font-bold text-white mt-1">{totalWorkers}</h2>
+            </div>
+
+            {/* Verified Workers */}
+            <div className="bg-slate-800/50 backdrop-blur-md p-6 rounded-2xl border border-slate-700 hover:border-yellow-500/30 transition-all group">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-yellow-500/10 p-3 rounded-xl border border-yellow-500/20 group-hover:scale-110 transition-transform">
+                  <Award size={24} className="text-yellow-500" />
+                </div>
+                <span className="text-xs font-bold text-emerald-500 uppercase tracking-tighter">Verified</span>
+              </div>
+              <p className="text-slate-400 text-sm font-semibold uppercase tracking-wider">Certified Personnel</p>
+              <h2 className="text-4xl font-bold text-yellow-500 mt-1">{passCount}</h2>
+            </div>
+
+            {/* Pass Rate */}
+            <div className="bg-slate-800/50 backdrop-blur-md p-6 rounded-2xl border border-slate-700 hover:border-yellow-500/30 transition-all group">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-yellow-500/10 p-3 rounded-xl border border-yellow-500/20 group-hover:scale-110 transition-transform">
+                  <Activity size={24} className="text-yellow-500" />
+                </div>
+                <span className="text-xs font-bold text-yellow-500 uppercase tracking-tighter">Real-Time</span>
+              </div>
+              <p className="text-slate-400 text-sm font-semibold uppercase tracking-wider">Quality Benchmark</p>
+              <h2 className="text-4xl font-bold text-white mt-1">{passRate}%</h2>
             </div>
           </div>
 
           {/* Main Content Area: Chart + Table */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
-            {/* Pie Chart */}
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 h-[400px] flex flex-col">
-              <h2 className="text-slate-800 text-xl font-bold mb-6">
-                Demand by Trade (District X)
-              </h2>
+            {/* Pie Chart Card */}
+            <div className="bg-slate-800/50 backdrop-blur-md p-8 rounded-3xl border border-slate-700 h-[450px] flex flex-col shadow-xl">
+              <div className="flex items-center gap-3 mb-6">
+                 <div className="w-1 h-6 bg-yellow-500 rounded-full"></div>
+                 <h2 className="text-white text-xl font-bold tracking-tight">Trade Distribution Analysis</h2>
+              </div>
               <div className="flex-1 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -147,53 +110,64 @@ export default function Dashboard() {
                       data={skillData}
                       cx="50%"
                       cy="45%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={5}
+                      innerRadius={70}
+                      outerRadius={110}
+                      paddingAngle={8}
                       dataKey="value"
+                      stroke="none"
                     >
                       {skillData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        <Cell key={`cell-${index}`} fill={GOLD_COLORS[index % GOLD_COLORS.length]} className="focus:outline-none" />
                       ))}
                     </Pie>
                     <Tooltip 
-                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      contentStyle={{ backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', color: '#fff' }}
+                      itemStyle={{ color: '#eab308' }}
                     />
-                    <Legend verticalAlign="bottom" height={36} />
+                    <Legend 
+                        verticalAlign="bottom" 
+                        height={36} 
+                        formatter={(value) => <span className="text-slate-400 text-sm font-medium">{value}</span>}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* Live Worker Feed Table */}
-            <div className="bg-white p-0 rounded-2xl shadow-sm border border-slate-200 h-[400px] flex flex-col overflow-hidden">
-              <div className="p-6 border-b border-slate-100">
-                <h2 className="text-slate-800 text-xl font-bold">
-                  Live Verification Feed
-                </h2>
+            {/* Live Worker Feed Table Card */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-3xl border border-slate-700 h-[450px] flex flex-col overflow-hidden shadow-xl">
+              <div className="p-6 border-b border-slate-700 flex items-center justify-between bg-slate-800/30">
+                <div className="flex items-center gap-3">
+                    <div className="w-1 h-6 bg-yellow-500 rounded-full"></div>
+                    <h2 className="text-white text-xl font-bold tracking-tight">Live Certification Feed</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 bg-yellow-500 rounded-full animate-ping"></span>
+                    <span className="text-[10px] text-yellow-500 font-bold uppercase tracking-widest">Live Updates</span>
+                </div>
               </div>
               
-              <div className="overflow-y-auto flex-1 p-2">
+              <div className="overflow-y-auto flex-1 custom-scrollbar">
                 <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 z-10">
+                  <thead className="text-xs text-slate-500 uppercase bg-slate-900/50 sticky top-0 z-10">
                     <tr>
-                      <th className="px-6 py-4 font-semibold rounded-tl-lg">Worker Name</th>
-                      <th className="px-6 py-4 font-semibold">Trade</th>
-                      <th className="px-6 py-4 font-semibold">Date</th>
-                      <th className="px-6 py-4 font-semibold rounded-tr-lg text-right">Status</th>
+                      <th className="px-6 py-4 font-bold tracking-wider">Candidate</th>
+                      <th className="px-6 py-4 font-bold tracking-wider">Applied Trade</th>
+                      <th className="px-6 py-4 font-bold tracking-wider">Timestamp</th>
+                      <th className="px-6 py-4 font-bold tracking-wider text-right">Verification</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-700/50">
                     {workers.map((worker, index) => (
-                      <tr key={index} className="bg-white border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-slate-900">{worker.name}</td>
-                        <td className="px-6 py-4 text-slate-600">{worker.skill}</td>
-                        <td className="px-6 py-4 text-slate-500">{worker.date}</td>
+                      <tr key={index} className="hover:bg-yellow-500/5 transition-colors group">
+                        <td className="px-6 py-4 font-bold text-slate-200">{worker.name}</td>
+                        <td className="px-6 py-4 text-slate-400">{worker.skill}</td>
+                        <td className="px-6 py-4 text-slate-500 font-mono text-xs">{worker.date}</td>
                         <td className="px-6 py-4 text-right">
-                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          <span className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border ${
                             worker.result === "PASS" 
-                              ? "bg-emerald-100 text-emerald-700" 
-                              : "bg-red-100 text-red-700"
+                              ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" 
+                              : "bg-red-500/10 text-red-500 border-red-500/20"
                           }`}>
                             {worker.result}
                           </span>

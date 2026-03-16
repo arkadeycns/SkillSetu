@@ -1,15 +1,17 @@
-// src/pages/AIInterview.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Square, Loader2, User, Bot, Trash2, Send } from 'lucide-react';
+import { useNavigate, useLocation } from "react-router-dom";
+import { Mic, Square, Loader2, User, Bot, Trash2, Send, ChevronLeft } from 'lucide-react';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import { sendAudioToAI } from '../api/aiService';
 
 export default function AIInterview() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const selectedSkill = location.state?.skill || "General Trade";
+  
   const { isRecording, startRecording, stopRecording } = useVoiceRecorder();
   const [messages, setMessages] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  
-  // NEW STATES: To hold the audio for review before sending
   const [stagedAudioBlob, setStagedAudioBlob] = useState(null);
   const [stagedAudioUrl, setStagedAudioUrl] = useState(null);
   
@@ -20,24 +22,20 @@ export default function AIInterview() {
     setMessages([
       { 
         sender: 'ai', 
-        text: "Namaste! Main apka AI mentor hoon. T-Joint banane ke steps detail mein batayein.", 
-        audioUrl: null // If you have a static intro mp3, you can add the URL here later!
+        text: `Namaste! Main apka AI mentor hoon. ${selectedSkill} assessment ke liye taiyaar? Sabse pehle, bataiye ki safety goggles ka sahi upyog kab aur kyun kiya jata hai?`, 
+        audioUrl: null 
       }
     ]);
-  }, []);
+  }, [selectedSkill]);
 
-  // Auto-scroll to the bottom when new messages or previews appear
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isProcessing, stagedAudioUrl]);
 
-  // 1. Handle Recording (Start / Stop and Stage)
   const handleRecordToggle = async () => {
     if (isRecording) {
       const audioBlob = await stopRecording();
       if (!audioBlob) return;
-
-      // Stage the audio for review instead of sending immediately
       setStagedAudioBlob(audioBlob);
       setStagedAudioUrl(URL.createObjectURL(audioBlob));
     } else {
@@ -45,143 +43,145 @@ export default function AIInterview() {
     }
   };
 
-  // 2. Handle Canceling the Audio
   const handleCancelAudio = () => {
     setStagedAudioBlob(null);
     setStagedAudioUrl(null);
   };
 
-  // 3. Handle Sending the Audio
   const handleSendAudio = async () => {
     if (!stagedAudioBlob) return;
 
-    // Add user's audio to the chat visually
     setMessages(prev => [...prev, { sender: 'user', audioUrl: stagedAudioUrl }]);
-    
-    // Save the blob to send and clear the staging area immediately
     const blobToSend = stagedAudioBlob;
     setStagedAudioBlob(null);
     setStagedAudioUrl(null);
     
-    // Send to backend
     setIsProcessing(true);
     const aiResult = await sendAudioToAI(blobToSend);
     setIsProcessing(false);
 
-    // Add AI response to the chat
     if (typeof aiResult === 'string') {
-      setMessages(prev => [...prev, { sender: 'ai', audioUrl: aiResult }]);
+      setMessages(prev => [...prev, { sender: 'ai', text: "Bahut badhiya. Agla sawal...", audioUrl: aiResult }]);
     } else {
-      const msg = aiResult?.error || "Network error. Could not reach the AI.";
-      alert(msg);
+      alert("AI is having trouble connecting. Check your internet.");
     }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      <header className="bg-white shadow-sm p-4 text-center">
-        <h1 className="text-xl font-bold text-gray-800">Practical Skill Assessment</h1>
-        <p className="text-sm text-gray-500">Speak naturally in your own language</p>
+    <div className="flex flex-col h-screen bg-slate-900 text-slate-200 font-sans">
+      
+      {/* Header */}
+      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700 p-4 flex items-center justify-between">
+        <button 
+          onClick={() => navigate('/chooseskill')}
+          className="p-2 hover:bg-slate-700 rounded-full transition-colors text-slate-400"
+        >
+          <ChevronLeft size={24} />
+        </button>
+        <div className="text-center">
+          <h1 className="text-lg font-bold text-white tracking-wide uppercase">AI Mentor: {selectedSkill}</h1>
+          <div className="flex items-center justify-center gap-1.5">
+            <span className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
+            <p className="text-[10px] text-yellow-500 font-black uppercase tracking-widest">Live Assessment</p>
+          </div>
+        </div>
+        <div className="w-10"></div> {/* Spacer for symmetry */}
       </header>
 
       {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 custom-scrollbar bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-800/20 via-slate-900 to-slate-900">
         {messages.map((msg, index) => (
-          <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
             
-            {/* AI Avatar */}
             {msg.sender === 'ai' && (
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3 flex-shrink-0">
-                <Bot className="text-blue-600" size={20} />
+              <div className="w-10 h-10 rounded-xl bg-slate-800 border border-yellow-500/30 flex items-center justify-center mr-3 shadow-lg">
+                <Bot className="text-yellow-500" size={22} />
               </div>
             )}
 
-            {/* Chat Bubble */}
-            <div className={`max-w-[85%] sm:max-w-[75%] p-4 rounded-2xl ${
+            <div className={`max-w-[85%] md:max-w-[70%] p-5 rounded-2xl shadow-xl ${
               msg.sender === 'user' 
-                ? 'bg-blue-600 text-white rounded-br-none' 
-                : 'bg-white border border-gray-200 text-gray-800 rounded-bl-none shadow-sm'
+                ? 'bg-yellow-500 text-slate-900 rounded-tr-none font-bold' 
+                : 'bg-slate-800 border border-slate-700 text-slate-100 rounded-tl-none'
             }`}>
+              {msg.text && <p className="mb-4 leading-relaxed text-lg">{msg.text}</p>}
               
-              {/* Text rendering */}
-              {msg.text && <p className="mb-2">{msg.text}</p>}
-              
-              {/* Playable Audio in Chat */}
               {msg.audioUrl && (
                   <audio 
                     src={msg.audioUrl} 
                     controls 
-                    autoPlay={msg.sender === 'ai' && index === messages.length - 1}
-                    className="h-10 w-full min-w-[200px] sm:min-w-[250px] rounded-md"
+                    className={`h-10 w-full min-w-[240px] rounded-lg ${msg.sender === 'user' ? 'brightness-90 invert' : 'brightness-110'}`}
                   />
               )}
             </div>
 
-            {/* User Avatar */}
             {msg.sender === 'user' && (
-              <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center ml-3 flex-shrink-0">
-                <User className="text-gray-600" size={20} />
+              <div className="w-10 h-10 rounded-xl bg-yellow-500 flex items-center justify-center ml-3 shadow-lg shadow-yellow-500/20">
+                <User className="text-slate-900" size={22} />
               </div>
             )}
           </div>
         ))}
 
-        {/* Loading Indicator */}
         {isProcessing && (
-          <div className="flex justify-start items-center space-x-2 text-gray-500">
+          <div className="flex justify-start items-center space-x-3 text-yellow-500/80 bg-slate-800/30 w-fit p-4 rounded-2xl border border-slate-700">
             <Loader2 className="animate-spin" size={20} />
-            <span className="text-sm animate-pulse">AI is analyzing your response...</span>
+            <span className="text-sm font-bold tracking-wide animate-pulse">AI is analyzing your expertise...</span>
           </div>
         )}
         <div ref={chatEndRef} />
       </div>
 
-      {/* Action Bar (Mic / Preview / Send) */}
-      <div className="bg-white border-t border-gray-200 p-4 sm:p-6 flex justify-center items-center min-h-[100px]">
+      {/* Action Bar */}
+      <div className="bg-slate-800/80 backdrop-blur-xl border-t border-slate-700 p-6 flex justify-center items-center min-h-[120px]">
         
-        {/* If audio is recorded but not sent yet, show PREVIEW bar */}
         {stagedAudioUrl ? (
-          <div className="flex items-center gap-3 w-full max-w-md bg-gray-100 p-2 pl-4 rounded-full shadow-inner border border-gray-200">
+          <div className="flex items-center gap-4 w-full max-w-lg bg-slate-900 p-3 pr-4 rounded-2xl shadow-2xl border border-yellow-500/30 animate-fade-in-up">
             <button 
               onClick={handleCancelAudio}
-              className="p-2 text-red-500 hover:bg-red-100 rounded-full transition-colors"
-              title="Cancel Recording"
+              className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
             >
               <Trash2 size={24} />
             </button>
             
-            <audio src={stagedAudioUrl} controls className="flex-1 h-10" />
+            <audio src={stagedAudioUrl} controls className="flex-1 h-10 brightness-110" />
             
             <button 
               onClick={handleSendAudio}
-              className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-colors shadow-md"
-              title="Send to AI"
+              className="p-4 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded-xl transition-all shadow-lg shadow-yellow-500/20"
             >
-              <Send size={20} className="ml-0.5" />
+              <Send size={22} />
             </button>
           </div>
         ) : (
-          /* Otherwise, show the standard MIC button */
-          <button 
-            onClick={handleRecordToggle}
-            disabled={isProcessing}
-            className={`relative flex items-center justify-center w-20 h-20 rounded-full transition-all duration-300 shadow-lg ${
-              isRecording 
-                ? 'bg-red-500 hover:bg-red-600 animate-pulse' 
-                : 'bg-blue-600 hover:bg-blue-700'
-            } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            {isRecording ? (
-              <Square className="text-white fill-current" size={32} />
-            ) : (
-              <Mic className="text-white" size={36} />
-            )}
-            
-            {/* Ripple effect when recording */}
-            {isRecording && (
-              <span className="absolute w-full h-full rounded-full border-4 border-red-500 animate-ping opacity-75"></span>
-            )}
-          </button>
+          <div className="flex flex-col items-center gap-4">
+            <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em] font-black">
+                {isRecording ? "Listening to your response..." : "Tap to Speak"}
+            </p>
+            <button 
+                onClick={handleRecordToggle}
+                disabled={isProcessing}
+                className={`relative flex items-center justify-center w-24 h-24 rounded-3xl transition-all duration-500 shadow-2xl ${
+                isRecording 
+                    ? 'bg-red-500 scale-110 shadow-red-500/40' 
+                    : 'bg-yellow-500 hover:scale-105 shadow-yellow-500/20'
+                } ${isProcessing ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+                {isRecording ? (
+                <Square className="text-white fill-current" size={32} />
+                ) : (
+                <Mic className="text-slate-900" size={40} />
+                )}
+                
+                {/* Voice Pulse Ripple */}
+                {isRecording && (
+                <>
+                    <span className="absolute w-full h-full rounded-3xl border-4 border-red-500 animate-ping opacity-40"></span>
+                    <span className="absolute w-[120%] h-[120%] rounded-3xl border border-red-500/20 animate-pulse"></span>
+                </>
+                )}
+            </button>
+          </div>
         )}
       </div>
     </div>
