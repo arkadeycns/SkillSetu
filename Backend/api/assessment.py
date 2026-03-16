@@ -1,5 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi.responses import JSONResponse
 import os
 import shutil
 import time
@@ -23,21 +23,8 @@ router = APIRouter(prefix="/api/assessment", tags=["Assessment"])
 
 manager = InterviewManager()
 
-DATA_DIR = "data"
 TEMP_DIR = "temp_data"
-AUDIO_DIR = "audio"
-
-os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(TEMP_DIR, exist_ok=True)
-os.makedirs(AUDIO_DIR, exist_ok=True)
-
-
-def remove_temp_file(path: str):
-    if os.path.exists(path):
-        try:
-            os.remove(path)
-        except Exception as exc:
-            print("Cleanup error:", exc)
 
 
 # ==========================================================
@@ -45,24 +32,12 @@ def remove_temp_file(path: str):
 # ==========================================================
 
 @router.post("/start-session")
-def start_session(
-    skill: str = Form(...),
-    language: str = Form(...)
-):
-
-    print("\n==============================")
-    print("START SESSION REQUEST RECEIVED")
-    print("Skill:", skill)
-    print("Language:", language)
-    print("==============================")
+def start_session(skill: str = Form(...), language: str = Form(...)):
 
     try:
 
         session = manager.start_session(category_id=skill)
-
         session.language = language
-
-        print("Session created:", session.session_id)
 
         prompt = manager.get_current_prompt(session)
         question_en = prompt["question"]
@@ -72,30 +47,18 @@ def start_session(
         else:
             localized_question = translate_to_user_language(question_en, language)
 
-        print("Localized Question:", localized_question)
-
-        print("Generating TTS audio...")
-        audio_path = generate_speech(localized_question, session.language)
-
-        print("Audio generated at:", audio_path)
+        audio_path = generate_speech(localized_question, language)
 
         with open(audio_path, "rb") as f:
-            audio_bytes = f.read()
-
-        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+            audio_base64 = base64.b64encode(f.read()).decode()
 
         return JSONResponse({
             "session_id": session.session_id,
             "question": localized_question,
-            "audio_base64": audio_base64
+            "audio": audio_base64
         })
 
     except Exception as exc:
-
-        print("\n!!!!! START SESSION ERROR !!!!!")
-        print(exc)
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
-
         raise HTTPException(status_code=500, detail=str(exc))
 
 
@@ -106,14 +69,8 @@ def start_session(
 @router.post("/assess-voice")
 async def process_voice_assessment(
     audio: UploadFile = File(...),
-    session_id: str = Form(...),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session_id: str = Form(...)
 ):
-
-    print("\n==============================")
-    print("VOICE ASSESSMENT REQUEST")
-    print("Session ID:", session_id)
-    print("==============================")
 
     temp_input_path = f"{TEMP_DIR}/incoming_{int(time.time())}_{audio.filename}"
 
@@ -123,12 +80,8 @@ async def process_voice_assessment(
     try:
 
         session = manager.get_session(session_id)
-        print("Session loaded")
-
         prompt = manager.get_current_prompt(session)
         question = prompt["question"]
-
-        print("Current question:", question)
 
         user_lang = session.language
 
@@ -143,7 +96,9 @@ async def process_voice_assessment(
 
         stt_lang_code = whisper_lang_map.get(user_lang.lower(), "en")
 
-        print(f"Running Speech-to-Text with mapped language code: {stt_lang_code} (Original: {user_lang})")
+        # ===============================
+        # SPEECH TO TEXT
+        # ===============================
 
         user_text = transcribe_audio(temp_input_path, language=stt_lang_code)
 
@@ -156,13 +111,11 @@ async def process_voice_assessment(
 
         print("Translated answer:", english_user_text)
 
-        # --------------------------------------------------
-        # STATEFUL RAG
-        # --------------------------------------------------
+        # ===============================
+        # RAG FEEDBACK
+        # ===============================
 
         chat_history = getattr(session, "answers", [])
-
-        print("Running RAG query with session context...")
 
         ai_feedback_en = rag_query(
             question,
@@ -178,9 +131,9 @@ async def process_voice_assessment(
             evaluation={"feedback": ai_feedback_en}
         )
 
-        # --------------------------------------------------
-        # GENERATE FOLLOW-UP / COUNTER QUESTIONS
-        # --------------------------------------------------
+        # ===============================
+        # GENERATE COUNTER QUESTION
+        # ===============================
 
         if prompt["stage"] == "primary":
 
@@ -189,45 +142,58 @@ async def process_voice_assessment(
                 user_answer_en=english_user_text,
                 identified_gaps=ai_feedback_en,
                 sop_context=ai_feedback_en,
-                count=2,
+                count=1,
                 previous_questions=chat_history
             )
+
+            # Safe fallback if generator fails
+            if counters and len(counters) > 0:
+                counter_question = counters[0]
+            else:
+                counter_question = "Can you explain your answer in more detail?"
 
             manager.advance_after_primary(session, counters=counters)
 
         else:
+
             manager.advance_after_counter(session)
 
-        next_prompt = manager.get_current_prompt(session)
-        next_question = next_prompt["question"]
+            next_prompt = manager.get_current_prompt(session)
+            counter_question = next_prompt["question"]
 
-        print("Next question:", next_question)
+        print("Counter question:", counter_question)
+
+        # ===============================
+        # COMBINE FEEDBACK + COUNTER
+        # ===============================
+
+        combined_text_en = f"{ai_feedback_en}. Now tell me this: {counter_question}"
 
         if user_lang.lower().startswith("en"):
-            localized_question = next_question
+            combined_text_local = combined_text_en
         else:
-            localized_question = translate_to_user_language(next_question, user_lang)
+            combined_text_local = translate_to_user_language(combined_text_en, user_lang)
 
-        print("Localized next question:", localized_question)
+        print("Interviewer response:", combined_text_local)
 
-        print("Generating next TTS audio...")
+        # ===============================
+        # TEXT TO SPEECH
+        # ===============================
 
-        output_audio_path = generate_speech(localized_question, session.language)
+        audio_path = generate_speech(combined_text_local, user_lang)
 
-        background_tasks.add_task(remove_temp_file, output_audio_path)
+        with open(audio_path, "rb") as f:
+            audio_base64 = base64.b64encode(f.read()).decode()
 
         if os.path.exists(temp_input_path):
             os.remove(temp_input_path)
 
-        print("Voice assessment completed\n")
-
-        return FileResponse(output_audio_path, media_type="audio/mpeg")
+        return JSONResponse({
+            "interviewer_text": combined_text_local,
+            "audio": audio_base64
+        })
 
     except Exception as exc:
-
-        print("\n!!!!! VOICE ASSESSMENT ERROR !!!!!")
-        print(exc)
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
 
         if os.path.exists(temp_input_path):
             os.remove(temp_input_path)
@@ -242,15 +208,11 @@ async def process_voice_assessment(
 @router.get("/categories")
 def get_assessment_categories():
 
-    print("Fetching categories...")
-
     try:
         categories = list_categories()
         return {"categories": categories}
 
     except Exception as exc:
-
-        print("CATEGORY FETCH ERROR:", exc)
         raise HTTPException(status_code=500, detail=str(exc))
 
 
@@ -261,14 +223,10 @@ def get_assessment_categories():
 @router.get("/{session_id}/summary")
 def get_summary(session_id: str):
 
-    print("Summary requested for session:", session_id)
-
     try:
 
         session = manager.get_session(session_id)
         return manager.summarize(session)
 
     except Exception as exc:
-
-        print("SUMMARY ERROR:", exc)
         raise HTTPException(status_code=404, detail=str(exc))
