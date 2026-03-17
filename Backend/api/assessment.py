@@ -7,7 +7,7 @@ import base64
 
 # Interview engine
 from AI_Service.src.engine.interview_manager import InterviewManager
-from AI_Service.src.engine.counter_generator import generate_counter_questions
+from AI_Service.src.engine.interview_workflow import decide_turn_outcome, generate_counters_for_primary
 from AI_Service.src.engine.question_bank import list_categories
 
 # NLP utilities
@@ -16,7 +16,7 @@ from AI_Service.src.engine.translator import translate_to_english, translate_to_
 # AI modules
 from AI_Service.src.stt.transcriber import transcribe_audio
 
-from services.rag_service import rag_query
+from AI_Service.src.rag.qa import rag_query
 from services.tts_service import generate_speech
 
 router = APIRouter(prefix="/api/assessment", tags=["Assessment"])
@@ -115,72 +115,103 @@ async def process_voice_assessment(
         # RAG FEEDBACK
         # ===============================
 
-        chat_history = getattr(session, "answers", [])
+        chat_history = [
+            {"question": turn.question_text, "answer_en": turn.answer_en}
+            for turn in getattr(session, "history", [])
+        ]
 
-        ai_feedback_en = rag_query(
-            question,
-            english_user_text,
-            chat_history=chat_history
+        outcome = decide_turn_outcome(
+            question=question,
+            answer_en=english_user_text,
+            stage=prompt["stage"],
+            retry_used=getattr(session, "retry_used_for_primary", False),
+            counter_retry_used=getattr(session, "counter_retry_used_for_current", False),
+            chat_history=chat_history,
         )
 
+        if outcome.get("use_qa_feedback", True):
+            ai_feedback_en = rag_query(
+                question,
+                english_user_text,
+                chat_history=chat_history
+            )
+        else:
+            ai_feedback_en = outcome.get("feedback", "")
+
         print("RAG output:", ai_feedback_en)
+
+        next_step = outcome.get("next_step", "advance")
+
+        if prompt["stage"] in {"primary", "retry_primary"}:
+            if next_step == "retry_primary" and prompt["stage"] == "primary":
+                manager.advance_after_unsatisfactory_primary(session)
+            elif next_step == "ask_counter":
+                previous_counter_questions = [
+                    turn.question_text
+                    for turn in getattr(session, "history", [])
+                    if str(turn.stage).startswith("counter_")
+                ]
+                counters = generate_counters_for_primary(
+                    primary_question=question,
+                    answer_en=english_user_text,
+                    feedback=ai_feedback_en,
+                    previous_questions=previous_counter_questions,
+                    count=2,
+                )
+                manager.advance_after_primary(session, counters=counters)
+            else:
+                manager.skip_current_primary(session)
+        else:
+            if next_step == "retry_counter":
+                if not manager.retry_current_counter(session):
+                    manager.advance_after_counter(session)
+            else:
+                manager.advance_after_counter(session)
+
+        print("Turn outcome:", outcome)
 
         manager.record_answer(
             session,
             answer_en=english_user_text,
-            evaluation={"feedback": ai_feedback_en}
+            evaluation={
+                "feedback": ai_feedback_en,
+                "next_step": outcome.get("next_step", "advance"),
+            },
         )
 
-        # ===============================
-        # GENERATE COUNTER QUESTION
-        # ===============================
-
-        if prompt["stage"] == "primary":
-
-            counters = generate_counter_questions(
-                primary_question=question,
-                user_answer_en=english_user_text,
-                identified_gaps=ai_feedback_en,
-                sop_context=ai_feedback_en,
-                count=1,
-                previous_questions=chat_history
-            )
-
-            # Safe fallback if generator fails
-            if counters and len(counters) > 0:
-                counter_question = counters[0]
-            else:
-                counter_question = "Can you explain your answer in more detail?"
-
-            manager.advance_after_primary(session, counters=counters)
-
+        next_prompt = manager.get_current_prompt(session)
+        if next_prompt["stage"] == "completed":
+            interviewer_text_en = "Assessment complete. Tap End to view your final report."
         else:
-
-            manager.advance_after_counter(session)
-
-            next_prompt = manager.get_current_prompt(session)
-            counter_question = next_prompt["question"]
-
-        print("Counter question:", counter_question)
-
-        # ===============================
-        # COMBINE FEEDBACK + COUNTER
-        # ===============================
-
-        combined_text_en = f"{ai_feedback_en}. Now tell me this: {counter_question}"
+            feedback_en = ai_feedback_en or outcome.get("feedback", "")
+            next_q = next_prompt["question"]
+            is_retry_turn = (
+                outcome.get("next_step") in {"retry_primary", "retry_counter"}
+                or next_q.strip() == question.strip()
+            )
+            if is_retry_turn:
+                interviewer_text_en = (
+                    f"{feedback_en} This is a retry. Please answer this question again: {next_q}"
+                    if feedback_en
+                    else f"This is a retry. Please answer this question again: {next_q}"
+                )
+            else:
+                interviewer_text_en = f"{feedback_en} Next question: {next_q}" if feedback_en else next_q
 
         if user_lang.lower().startswith("en"):
-            combined_text_local = combined_text_en
+            interviewer_text_local = interviewer_text_en
+            feedback_local = outcome.get("feedback", "")
         else:
-            combined_text_local = translate_to_user_language(combined_text_en, user_lang)
+            interviewer_text_local = translate_to_user_language(interviewer_text_en, user_lang)
+            feedback_local = translate_to_user_language(outcome.get("feedback", ""), user_lang)
 
-        print("Interviewer response:", combined_text_local)
+        print("Interviewer response:", interviewer_text_local)
 
         # ===============================
         # TEXT TO SPEECH
         # ===============================
 
-        audio_path = generate_speech(combined_text_local, user_lang)
+        audio_path = generate_speech(interviewer_text_local, user_lang)
 
         with open(audio_path, "rb") as f:
             audio_base64 = base64.b64encode(f.read()).decode()
@@ -189,7 +220,8 @@ async def process_voice_assessment(
             os.remove(temp_input_path)
 
         return JSONResponse({
-            "interviewer_text": combined_text_local,
+            "interviewer_text": interviewer_text_local,
+            "feedback": feedback_local,
             "audio": audio_base64
         })
 

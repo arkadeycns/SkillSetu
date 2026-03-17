@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from services.rag_service import rag_query
+from AI_Service.src.rag.qa import rag_query
 from schemas.rag_schemas import RagRequest 
 
 router = APIRouter(prefix="/api/v1")

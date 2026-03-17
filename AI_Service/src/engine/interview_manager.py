@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List
 from uuid import uuid4
 
+from src.engine.interview_reporter import generate_final_interview_report
 from src.engine.question_bank import QuestionItem, get_category_questions
 
 
@@ -24,8 +25,10 @@ class SessionState:
     category_id: str
     questions: List[QuestionItem]
     primary_index: int = 0
-    stage: str = "primary"  # primary | counter_1 | counter_2 | completed
+    stage: str = "primary"  # primary | retry_primary | counter_1 | counter_2 | completed
     current_counters: List[str] = field(default_factory=list)
+    retry_used_for_primary: bool = False
+    counter_retry_used_for_current: bool = False
     history: List[TurnRecord] = field(default_factory=list)
 
 
@@ -56,10 +59,10 @@ class InterviewManager:
             }
 
         primary = state.questions[state.primary_index]
-        if state.stage == "primary":
+        if state.stage in {"primary", "retry_primary"}:
             return {
-                "stage": "primary",
-                "question_id": primary.id,
+                "stage": state.stage,
+                "question_id": primary.id if state.stage == "primary" else f"{primary.id}-R1",
                 "question": primary.text,
                 "primary_number": state.primary_index + 1,
                 "total_primaries": len(state.questions),
@@ -93,18 +96,48 @@ class InterviewManager:
             if len(state.current_counters) == 1:
                 state.current_counters.append("Can you explain the missing safety step in detail?")
             state.stage = "counter_1"
+            state.counter_retry_used_for_current = False
             return
         self._advance_to_next_primary(state)
+
+    def skip_current_primary(self, state: SessionState) -> None:
+        """Explicitly skip current primary question and move to next."""
+        self._advance_to_next_primary(state)
+
+    def advance_after_unsatisfactory_primary(self, state: SessionState) -> bool:
+        """Return True if moved to retry stage, else False when advanced to next primary."""
+        if state.stage == "primary" and not state.retry_used_for_primary:
+            state.retry_used_for_primary = True
+            state.stage = "retry_primary"
+            state.current_counters = []
+            state.counter_retry_used_for_current = False
+            return True
+
+        # Unsatisfactory on retry or any unexpected state in primary track: move on.
+        self._advance_to_next_primary(state)
+        return False
 
     def advance_after_counter(self, state: SessionState) -> None:
         if state.stage == "counter_1":
             state.stage = "counter_2"
+            state.counter_retry_used_for_current = False
             return
         self._advance_to_next_primary(state)
+
+    def retry_current_counter(self, state: SessionState) -> bool:
+        """Retry active counter once; returns True when retry remains in same stage."""
+        if state.stage not in {"counter_1", "counter_2"}:
+            return False
+        if state.counter_retry_used_for_current:
+            return False
+        state.counter_retry_used_for_current = True
+        return True
 
     def _advance_to_next_primary(self, state: SessionState) -> None:
         state.primary_index += 1
         state.current_counters = []
+        state.retry_used_for_primary = False
+        state.counter_retry_used_for_current = False
         if state.primary_index >= len(state.questions):
             state.stage = "completed"
         else:
@@ -113,6 +146,33 @@ class InterviewManager:
     def summarize(self, state: SessionState) -> Dict[str, Any]:
         total_turns = len(state.history)
         passed_turns = sum(1 for turn in state.history if bool(turn.evaluation.get("pass_fail", False)))
+
+        history_payload = [
+            {
+                "stage": turn.stage,
+                "question_id": turn.question_id,
+                "question_text": turn.question_text,
+                "answer_en": turn.answer_en,
+                "evaluation": turn.evaluation,
+            }
+            for turn in state.history
+        ]
+
+        report = generate_final_interview_report(
+            category_id=state.category_id,
+            history=history_payload,
+            total_primaries=len(state.questions),
+            completed_primaries=len(
+                {
+                    turn.question_id.split("-", 1)[0]
+                    for turn in state.history
+                    if turn.question_id
+                }
+            ),
+        )
+
+        strengths = report.get("strengths", [])
+        improvements = report.get("improvements", [])
         return {
             "session_id": state.session_id,
             "category_id": state.category_id,
@@ -121,14 +181,13 @@ class InterviewManager:
             "total_primaries": len(state.questions),
             "total_turns": total_turns,
             "pass_rate": (passed_turns / total_turns) if total_turns else 0.0,
-            "history": [
-                {
-                    "stage": turn.stage,
-                    "question_id": turn.question_id,
-                    "question_text": turn.question_text,
-                    "answer_en": turn.answer_en,
-                    "evaluation": turn.evaluation,
-                }
-                for turn in state.history
-            ],
+            "overall_score": report.get("overall_score", 0),
+            "score": report.get("overall_score", 0),
+            "result": report.get("result", "INCOMPLETE"),
+            "summary": report.get("summary", ""),
+            "feedback": report.get("feedback", ""),
+            "strengths": strengths,
+            "improvements": improvements,
+            "gaps": improvements,
+            "history": history_payload,
         }

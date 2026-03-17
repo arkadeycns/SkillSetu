@@ -1,10 +1,11 @@
+from io import BytesIO
+
 from fastapi import APIRouter, UploadFile, File, HTTPException
-import httpx
-import os
+
+from AI_Service.src.parser.resume_parser import parse_resume as parse_resume_text
+from AI_Service.src.parser.text_extractor import extract_text_from_pdf, extract_text_from_docx
 
 router = APIRouter()
-
-AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8001/api/resume/parse")
 
 ALLOWED_TYPES = [
     "application/pdf",
@@ -32,24 +33,26 @@ async def parse_resume(resume: UploadFile = File(...)):
             detail="File too large. Maximum size is 5MB."
         )
 
-    files = {
-        "resume": (resume.filename, file_bytes, resume.content_type)
-    }
-
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(AI_SERVICE_URL, files=files)
+        if resume.content_type == "application/pdf":
+            text = extract_text_from_pdf(BytesIO(file_bytes))
+        elif resume.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            text = extract_text_from_docx(BytesIO(file_bytes))
+        else:
+            text = file_bytes.decode("utf-8", errors="ignore")
 
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=500,
-                detail="AI resume parser service failed"
-            )
+        text = (text or "").strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="Could not extract text from uploaded resume")
 
-        return response.json()
+        return parse_resume_text(text)
 
-    except httpx.RequestError:
+    except HTTPException:
+        raise
+    except ValueError as exc:
         raise HTTPException(
-            status_code=500,
-            detail="Unable to connect to AI resume parser service"
-        )
+            status_code=400,
+            detail=str(exc)
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Resume parsing failed: {exc}") from exc

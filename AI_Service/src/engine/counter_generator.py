@@ -16,7 +16,7 @@ def _generate(prompt: str) -> str:
         messages=[
             {
                 "role": "system",
-                "content": "You are an expert vocational interviewer assessing candidate skills."
+                "content": "You are an empathetic vocational interviewer assessing an Indian blue-collar worker (e.g., plumber, electrician, factory worker). Speak in simple language."
             },
             {
                 "role": "user",
@@ -61,7 +61,7 @@ def generate_counter_questions(
     previous_q_text = "\n".join(previous_questions) if previous_questions else "None"
 
     prompt = f"""
-You are an expert vocational skills assessor conducting an interview.
+You are an empathetic vocational interviewer assessing an Indian blue-collar worker (e.g., plumber, electrician, factory worker). You ask simple, practical questions.
 
 Primary question asked:
 {primary_question}
