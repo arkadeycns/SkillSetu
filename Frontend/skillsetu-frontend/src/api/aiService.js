@@ -1,6 +1,8 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const ASSESS_VOICE_ENDPOINT = `${API_BASE_URL}/api/assessment/assess-voice`;
 const START_SESSION_ENDPOINT = `${API_BASE_URL}/api/assessment/start-session`;
+// MISSING ENDPOINT RESTORED:
+const RESUME_PARSE_ENDPOINT = `${API_BASE_URL}/api/v1/resume/parse`;
 
 // ------------------------------------------------------------------
 // 1. START SESSION (The Handshake)
@@ -18,16 +20,29 @@ export const startInterviewSession = async (skill, language) => {
 
     if (!response.ok) throw new Error("Failed to start AI session");
 
-    const data = await response.json();
-
-    // FIXED: Catch the new "audio" key your friend used!
-    const audioUrl = `data:audio/mpeg;base64,${data.audio}`;
-
-    return { 
-      sessionId: data.session_id, 
-      initialQuestionText: data.question, 
-      initialAudioUrl: audioUrl       
-    };
+    // 🛡️ BULLETPROOF CHECK: Is it JSON or a Raw File?
+    const contentType = response.headers.get("content-type");
+    
+    if (contentType && contentType.includes("application/json")) {
+      const data = await response.json();
+      const audioUrl = `data:audio/mpeg;base64,${data.audio || data.audio_base64}`;
+      return { 
+        sessionId: data.session_id, 
+        initialQuestionText: data.question, 
+        initialAudioUrl: audioUrl       
+      };
+    } else {
+      // If it's a raw audio file (FileResponse)
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const sessionId = response.headers.get("X-Session-ID") || `sess_${Date.now()}`;
+      
+      return { 
+        sessionId: sessionId, 
+        initialQuestionText: "Let's begin the assessment.", 
+        initialAudioUrl: audioUrl       
+      };
+    }
 
   } catch (error) {
     console.error("Error starting session:", error);
@@ -54,23 +69,33 @@ export const sendAudioToAI = async (audioBlob, sessionId) => {
     if (!response.ok) {
       let detail = response.statusText;
       try {
-        const errJson = await response.json();
-        if (errJson?.detail) detail = errJson.detail;
+        if (response.headers.get("content-type")?.includes("application/json")) {
+          const errJson = await response.json();
+          if (errJson?.detail) detail = errJson.detail;
+        }
       } catch (_) {}
       throw new Error(`Backend error: ${detail}`);
     }
 
-    // FIXED: The backend now returns JSON, not a raw file!
-    const data = await response.json();
+    // 🛡️ BULLETPROOF CHECK: Is it JSON or a Raw File?
+    const contentType = response.headers.get("content-type");
     
-    // Convert the base64 string directly into a playable URL
-    const aiAudioUrl = `data:audio/mpeg;base64,${data.audio}`;
-    
-    // We now return BOTH the audio and the new "interviewer_text" 
-    return { 
-      audioUrl: aiAudioUrl,
-      text: data.interviewer_text 
-    };
+    if (contentType && contentType.includes("application/json")) {
+      const data = await response.json();
+      const aiAudioUrl = `data:audio/mpeg;base64,${data.audio}`;
+      return { 
+        audioUrl: aiAudioUrl,
+        text: data.interviewer_text || data.question 
+      };
+    } else {
+      // It's a raw audio file (FileResponse)
+      const aiResponseBlob = await response.blob();
+      const aiAudioUrl = URL.createObjectURL(aiResponseBlob);
+      return { 
+        audioUrl: aiAudioUrl,
+        text: null 
+      };
+    }
 
   } catch (error) {
     console.error("API Error connecting to Backend:", error);
@@ -95,5 +120,34 @@ export const getInterviewSummary = async (sessionId) => {
   } catch (error) {
     console.error("API Error fetching summary:", error);
     return null; 
+  }
+};
+
+// ------------------------------------------------------------------
+// 4. PARSE RESUME (The Missing Export Restored!)
+// ------------------------------------------------------------------
+export const parseResume = async (resumeFile) => {
+  const formData = new FormData();
+  formData.append("resume", resumeFile);
+
+  try {
+    const response = await fetch(RESUME_PARSE_ENDPOINT, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      let detail = response.statusText;
+      try {
+        const errJson = await response.json();
+        if (errJson?.detail) detail = errJson.detail;
+      } catch (_) {}
+      throw new Error(`Resume parse failed: ${detail}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Resume parse error:", error);
+    throw error;
   }
 };

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { parseResume } from "../api/aiService";
 
 export const ResumeParser = () => {
   const navigate = useNavigate();
@@ -22,10 +23,10 @@ export const ResumeParser = () => {
     e.preventDefault();
     setIsDragging(false);
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && droppedFile.type === "application/pdf") {
+    if (droppedFile && (droppedFile.type === "application/pdf" || droppedFile.name.endsWith(".docx") || droppedFile.name.endsWith(".txt"))) {
       setFile(droppedFile);
     } else {
-      alert("Please upload a valid PDF file.");
+      alert("Please upload a valid PDF, DOCX, or TXT file.");
     }
   };
 
@@ -34,56 +35,64 @@ export const ResumeParser = () => {
     if (selectedFile) setFile(selectedFile);
   };
 
-  // Mock AI Parsing Sequence
-  const handleParse = () => {
+  // --- THIS IS THE REAL API CALL NOW ---
+  const handleParse = async () => {
     if (!file) return;
-    setIsParsing(true);
-    setParseStep("Extracting document text...");
-
-    // Simulate API pipeline delays for a realistic UX
-    setTimeout(() => setParseStep("Analyzing work experience..."), 1500);
-    setTimeout(() => setParseStep("Mapping technical skills..."), 3000);
-    setTimeout(() => setParseStep("Generating career heatmap..."), 4500);
     
-    setTimeout(() => {
-      setIsParsing(false);
+    setIsParsing(true);
+    setParseStep("Extracting and analyzing document with AI...");
+
+    try {
+      const result = await parseResume(file);
+      
+      console.log("BACKEND DATA:", result); // Keep this so we can see what the backend actually sends!
+      
       setParsedResult({
-        name: "Extracted from Resume",
-        role: "Full-Stack Developer (MERN)",
-        confidence: "94%",
-        skills: ["React.js", "Node.js", "MongoDB", "Python", "SQL", "Machine Learning"],
-        experience: "Mid-Level (3+ Years equivalent)",
+        name: result.name || "Candidate Profile",
+        role: result.role || "General Skilled Worker",
+        confidence: result.confidence || "N/A",
+        skills: result.skills || [],
+        experience: result.experience_level || "Experience Level Unknown",
+        summary: result.blue_collar_report?.fitment_summary || "Profile analyzed successfully.",
+        score: result.blue_collar_report?.suitability_score || 0
       });
-    }, 6000);
+
+    } catch (error) {
+      console.error("Resume parsing failed:", error);
+      alert(error.message || "Failed to parse resume. Please check your backend.");
+      setFile(null);
+    } finally {
+      setIsParsing(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-200 font-sans p-6 md:p-12 flex flex-col items-center">
       
       {/* Navigation & Header */}
-      <div className="w-full max-w-4xl flex justify-between items-center mb-12">
+      <div className="w-full max-w-4xl flex justify-between items-center mb-12 animate-fade-in-up">
         <button 
           onClick={() => navigate('/')}
           className="text-slate-400 hover:text-yellow-500 transition-colors flex items-center gap-2 text-sm font-semibold"
         >
           <span>←</span> Back to Home
         </button>
-        <div className="px-3 py-1 bg-slate-800 border border-yellow-500/30 rounded-full text-xs text-yellow-500 tracking-widest uppercase">
-          Enterprise Portal
+        <div className="px-3 py-1 bg-slate-800 border border-yellow-500/30 rounded-full text-xs text-yellow-500 tracking-widest uppercase shadow-[0_0_10px_rgba(234,179,8,0.1)]">
+          Intelligence Portal
         </div>
       </div>
 
-      <div className="w-full max-w-3xl text-center space-y-4 mb-10">
+      <div className="w-full max-w-3xl text-center space-y-4 mb-10 animate-fade-in-up">
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 to-yellow-500">
           AI Resume Intelligence
         </h1>
         <p className="text-slate-400 text-lg">
-          Upload your resume in PDF format. Our NLP engine will extract your core competencies and benchmark them against industry standards.
+          Upload your resume. Our NLP engine will extract your core competencies and benchmark them against industry standards.
         </p>
       </div>
 
       {/* Main Interface */}
-      <div className="w-full max-w-2xl bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-8 shadow-2xl">
+      <div className="w-full max-w-2xl bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-8 shadow-2xl animate-fade-in-up">
         
         {/* State 1: Upload Zone */}
         {!isParsing && !parsedResult && (
@@ -99,7 +108,7 @@ export const ResumeParser = () => {
           >
             <input 
               type="file" 
-              accept=".pdf" 
+              accept=".pdf,.docx,.txt" 
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               onChange={handleFileSelect}
             />
@@ -115,7 +124,7 @@ export const ResumeParser = () => {
             ) : (
               <div className="space-y-2">
                 <p className="text-xl font-semibold text-white">Drag & drop your resume</p>
-                <p className="text-sm text-slate-400">or click to browse (PDF only)</p>
+                <p className="text-sm text-slate-400">or click to browse (PDF, DOCX, TXT)</p>
               </div>
             )}
           </div>
@@ -141,7 +150,7 @@ export const ResumeParser = () => {
             <div className="flex items-center justify-between border-b border-slate-700 pb-4">
               <div>
                 <h3 className="text-2xl font-bold text-white">{parsedResult.role}</h3>
-                <p className="text-slate-400">{parsedResult.experience}</p>
+                <p className="text-slate-400 font-medium">{parsedResult.name} • {parsedResult.experience}</p>
               </div>
               <div className="text-right">
                 <div className="text-sm text-slate-400">Match Confidence</div>
@@ -149,14 +158,24 @@ export const ResumeParser = () => {
               </div>
             </div>
             
+            {/* New Fitment Summary Section */}
+            <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+               <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">AI Fitment Summary</h4>
+               <p className="text-slate-300 text-sm leading-relaxed">{parsedResult.summary}</p>
+            </div>
+
             <div>
               <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Extracted Skills</h4>
               <div className="flex flex-wrap gap-2">
-                {parsedResult.skills.map((skill, index) => (
-                  <span key={index} className="px-3 py-1 bg-slate-700 border border-slate-600 rounded-md text-sm text-yellow-50">
-                    {skill}
-                  </span>
-                ))}
+                {parsedResult.skills && parsedResult.skills.length > 0 ? (
+                  parsedResult.skills.map((skill, index) => (
+                    <span key={index} className="px-3 py-1 bg-slate-700 border border-slate-600 rounded-md text-sm text-yellow-50">
+                      {skill}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-slate-500 italic">No skills explicitly identified.</span>
+                )}
               </div>
             </div>
           </div>
@@ -168,15 +187,15 @@ export const ResumeParser = () => {
             <>
               <button 
                 onClick={() => { setParsedResult(null); setFile(null); }}
-                className="px-6 py-2 rounded-md text-slate-300 hover:text-white transition-colors"
+                className="px-6 py-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
               >
                 Scan Another
               </button>
               <button 
-                onClick={() => navigate('/dashboard')}
-                className="px-6 py-2 bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold rounded-md shadow-[0_0_10px_rgba(234,179,8,0.2)] transition-all"
+                onClick={() => navigate('/chooseskill')} 
+                className="px-6 py-2 bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold rounded-md shadow-[0_0_10px_rgba(234,179,8,0.2)] transition-all hover:-translate-y-1"
               >
-                View Skill Dashboard →
+                Start AI Interview →
               </button>
             </>
           ) : (
@@ -186,7 +205,7 @@ export const ResumeParser = () => {
               className={`w-full px-6 py-3 font-bold rounded-md transition-all ${
                 !file || isParsing
                   ? "bg-slate-700 text-slate-500 cursor-not-allowed" 
-                  : "bg-yellow-500 hover:bg-yellow-400 text-slate-900 shadow-[0_0_15px_rgba(234,179,8,0.3)]"
+                  : "bg-yellow-500 hover:bg-yellow-400 text-slate-900 shadow-[0_0_15px_rgba(234,179,8,0.3)] hover:-translate-y-1"
               }`}
             >
               {isParsing ? "Processing..." : "Analyze Resume"}
@@ -194,7 +213,6 @@ export const ResumeParser = () => {
           )}
         </div>
       </div>
-
     </div>
   );
 };
