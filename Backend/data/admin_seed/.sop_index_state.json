@@ -1,7 +1,7 @@
 {
-  "sop_hash": "6477f1edfd64520dda8e0391024eb59553e18316105b579c937bcc691890d06e",
-  "source_file": "C:\\Users\\hride\\Desktop\\CODES\\SkillSetu\\SkillSetu\\Backend\\data\\admin_seed\\sop.fixed.txt",
-  "indexed_at": "2026-03-18T12:03:05.087568+00:00",
+  "sop_hash": "c44670f0683f28328b74683b29bc836d18cd4875f4679d2bfa5f7a3bd6636809",
+  "source_file": "/Users/apoorvapandey/Desktop/SkillSetu/Backend/data/admin_seed/sop.fixed.txt",
+  "indexed_at": "2026-03-19T11:24:07.621024+00:00",
   "chunks": 53,
   "upserted": 53
 }

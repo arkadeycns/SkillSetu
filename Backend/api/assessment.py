@@ -15,9 +15,12 @@ from AI_Service.src.engine.translator import translate_to_english, translate_to_
 
 # AI modules
 from AI_Service.src.stt.transcriber import transcribe_audio
-
 from AI_Service.src.rag.qa import rag_query
 from services.tts_service import generate_speech
+
+# 🔥 NEW IMPORTS
+from services.data_provider import get_user_resume_data
+from services.ai_engine import generate_training_recommendations
 
 router = APIRouter(prefix="/api/assessment", tags=["Assessment"])
 
@@ -35,7 +38,6 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 def start_session(skill: str = Form(...), language: str = Form(...)):
 
     try:
-
         session = manager.start_session(category_id=skill)
         session.language = language
 
@@ -78,7 +80,6 @@ async def process_voice_assessment(
         shutil.copyfileobj(audio.file, buffer)
 
     try:
-
         session = manager.get_session(session_id)
         prompt = manager.get_current_prompt(session)
         question = prompt["question"]
@@ -102,17 +103,23 @@ async def process_voice_assessment(
 
         user_text = transcribe_audio(temp_input_path, language=stt_lang_code)
 
-        print("User speech:", user_text)
-
         if user_lang.lower().startswith("en"):
             english_user_text = user_text
         else:
             english_user_text = translate_to_english(user_text, user_lang)
 
-        print("Translated answer:", english_user_text)
+        # ===============================
+        # GET USER CONTEXT (🔥 NEW)
+        # ===============================
+
+        user_data = get_user_resume_data(user_id=session.session_id)
+
+        skills = user_data.get("skills", [])
+        expected_skills = ["Arrays", "Strings", "Graphs", "DP", "OS", "DBMS"]
+        weaknesses = [s for s in expected_skills if s not in skills]
 
         # ===============================
-        # RAG FEEDBACK
+        # RAG FEEDBACK (🔥 MODIFIED)
         # ===============================
 
         chat_history = [
@@ -130,17 +137,26 @@ async def process_voice_assessment(
         )
 
         if outcome.get("use_qa_feedback", True):
+
+            # 🔥 PERSONALIZED CONTEXT
+            context = f"""
+            User Skills: {skills}
+            User Weakness: {weaknesses}
+            """
+
             ai_feedback_en = rag_query(
-                question,
+                question + "\n" + context,
                 english_user_text,
                 chat_history=chat_history
             )
         else:
             ai_feedback_en = outcome.get("feedback", "")
 
-        print("RAG output:", ai_feedback_en)
-
         next_step = outcome.get("next_step", "advance")
+
+        # ===============================
+        # FLOW CONTROL (UNCHANGED)
+        # ===============================
 
         if prompt["stage"] in {"primary", "retry_primary"}:
             if next_step == "retry_primary" and prompt["stage"] == "primary":
@@ -168,8 +184,6 @@ async def process_voice_assessment(
             else:
                 manager.advance_after_counter(session)
 
-        print("Turn outcome:", outcome)
-
         manager.record_answer(
             session,
             answer_en=english_user_text,
@@ -180,23 +194,14 @@ async def process_voice_assessment(
         )
 
         next_prompt = manager.get_current_prompt(session)
+
         if next_prompt["stage"] == "completed":
             interviewer_text_en = "Assessment complete. Tap End to view your final report."
         else:
             feedback_en = ai_feedback_en or outcome.get("feedback", "")
             next_q = next_prompt["question"]
-            is_retry_turn = (
-                outcome.get("next_step") in {"retry_primary", "retry_counter"}
-                or next_q.strip() == question.strip()
-            )
-            if is_retry_turn:
-                interviewer_text_en = (
-                    f"{feedback_en} This is a retry. Please answer this question again: {next_q}"
-                    if feedback_en
-                    else f"This is a retry. Please answer this question again: {next_q}"
-                )
-            else:
-                interviewer_text_en = f"{feedback_en} Next question: {next_q}" if feedback_en else next_q
+
+            interviewer_text_en = f"{feedback_en} Next question: {next_q}" if feedback_en else next_q
 
         if user_lang.lower().startswith("en"):
             interviewer_text_local = interviewer_text_en
@@ -204,8 +209,6 @@ async def process_voice_assessment(
         else:
             interviewer_text_local = translate_to_user_language(interviewer_text_en, user_lang)
             feedback_local = translate_to_user_language(outcome.get("feedback", ""), user_lang)
-
-        print("Interviewer response:", interviewer_text_local)
 
         # ===============================
         # TEXT TO SPEECH
@@ -216,13 +219,20 @@ async def process_voice_assessment(
         with open(audio_path, "rb") as f:
             audio_base64 = base64.b64encode(f.read()).decode()
 
+        # ===============================
+        # 🔥 TRAINING RECOMMENDATION (NEW)
+        # ===============================
+
+        training_plan = generate_training_recommendations(user_data)
+
         if os.path.exists(temp_input_path):
             os.remove(temp_input_path)
 
         return JSONResponse({
             "interviewer_text": interviewer_text_local,
             "feedback": feedback_local,
-            "audio": audio_base64
+            "audio": audio_base64,
+            "training_plan": training_plan   # 🔥 NEW FIELD
         })
 
     except Exception as exc:
@@ -239,11 +249,9 @@ async def process_voice_assessment(
 
 @router.get("/categories")
 def get_assessment_categories():
-
     try:
         categories = list_categories()
         return {"categories": categories}
-
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -254,11 +262,8 @@ def get_assessment_categories():
 
 @router.get("/{session_id}/summary")
 def get_summary(session_id: str):
-
     try:
-
         session = manager.get_session(session_id)
         return manager.summarize(session)
-
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc))
