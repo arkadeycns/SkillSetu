@@ -2,6 +2,12 @@ from gtts import gTTS
 import uuid
 import os
 
+#  Ensure audio folder exists
+AUDIO_DIR = "audio"
+os.makedirs(AUDIO_DIR, exist_ok=True)
+
+
+#  Language mapping
 LANGUAGE_MAP = {
     "hindi": "hi",
     "english": "en",
@@ -16,33 +22,83 @@ LANGUAGE_MAP = {
 }
 
 
+# ==========================================================
+#  Normalize language input
+# ==========================================================
+
 def _normalize_language(language_code: str | None) -> str:
-    normalized = (language_code or "").strip().lower()
-    if not normalized:
+    if not language_code:
         return "en"
 
-    if normalized in LANGUAGE_MAP:
-        return LANGUAGE_MAP[normalized]
+    lang = language_code.strip().lower()
 
-    # Accept ISO-639-1 or regional values like hi-IN.
-    if "-" in normalized:
-        normalized = normalized.split("-", 1)[0]
+    # Map known languages
+    if lang in LANGUAGE_MAP:
+        return LANGUAGE_MAP[lang]
 
-    if len(normalized) == 2 and normalized.isalpha():
-        return normalized
+    # Handle formats like "en-IN", "hi-IN"
+    if "-" in lang:
+        lang = lang.split("-")[0]
+
+    # Accept valid 2-letter codes
+    if len(lang) == 2 and lang.isalpha():
+        return lang
 
     return "en"
 
 
-def generate_speech(text: str, language_code: str = "en"):
-    
-    # create unique filename
-    filename = f"audio/audio_{uuid.uuid4()}.mp3"
+# ==========================================================
+#  TEXT → SPEECH
+# ==========================================================
 
-    # create audio
-    tts = gTTS(text=text, lang=_normalize_language(language_code))
+def generate_speech(text: str, language_code: str = "en") -> str:
+    """
+    Converts text → speech and returns file path
+    """
 
-    # save file
-    tts.save(filename)
+    try:
+        if not text or not text.strip():
+            raise ValueError("Empty text for TTS")
 
-    return filename
+        lang = _normalize_language(language_code)
+
+        #  Unique filename
+        filename = f"{AUDIO_DIR}/audio_{uuid.uuid4()}.mp3"
+
+        #  Generate speech
+        tts = gTTS(text=text, lang=lang)
+        tts.save(filename)
+
+        return filename
+
+    except Exception as e:
+        print(" TTS ERROR:", e)
+        raise e
+
+
+# ==========================================================
+#  OPTIONAL: CLEAN OLD AUDIO FILES
+# ==========================================================
+
+def cleanup_audio_files(max_files: int = 50):
+    """
+    Keeps only latest N audio files (prevents storage overflow)
+    """
+
+    try:
+        files = [
+            os.path.join(AUDIO_DIR, f)
+            for f in os.listdir(AUDIO_DIR)
+            if f.endswith(".mp3")
+        ]
+
+        # Sort by creation time
+        files.sort(key=os.path.getctime)
+
+        # Remove old files
+        if len(files) > max_files:
+            for f in files[:-max_files]:
+                os.remove(f)
+
+    except Exception as e:
+        print(" Cleanup failed:", e)

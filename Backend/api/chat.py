@@ -1,66 +1,109 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, UploadFile, File, Form
+import os
+import shutil
+import time
+import base64
+
 from services.data_provider import get_user_resume_data
 from services.ai_engine import generate_chat_response
-
-# Optional voice imports
-try:
-    from services.stt_service import speech_to_text
-    from services.tts_service import text_to_speech
-except:
-    speech_to_text = None
-    text_to_speech = None
+from AI_Service.src.stt.transcriber import transcribe_audio
+from services.tts_service import generate_speech
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
+#  In-memory session storage (replace with Redis/DB later)
+sessions = {}
+
+TEMP_DIR = "temp_chat_audio"
+os.makedirs(TEMP_DIR, exist_ok=True)
+
 
 @router.post("/")
-async def chat(data: dict):
+async def chat(
+    message: str = Form(None),
+    session_id: str = Form("default"),
+    user_id: str = Form(None),
+    resume_text: str = Form(None),   
+    audio: UploadFile = File(None),
+    language: str = Form("en")
+):
     try:
-        user_id = data.get("user_id")
-        message = data.get("message")
-        resume_text = data.get("resume_text")
-        audio = data.get("audio")  # optional
+        # ==========================================================
+        #  AUDIO → TEXT
+        # ==========================================================
+        if audio:
+            temp_path = f"{TEMP_DIR}/audio_{int(time.time())}_{audio.filename}"
 
-        # 🎤 Voice → Text
-        if audio and speech_to_text:
             try:
-                message = speech_to_text(audio)
-            except Exception as e:
-                print(" STT failed:", e)
+                with open(temp_path, "wb") as buffer:
+                    shutil.copyfileobj(audio.file, buffer)
 
-        #  Ensure message exists
-        if not message:
-            return {
-                "success": False,
-                "error": "No message provided"
-            }
+                message = transcribe_audio(temp_path, language=language)
 
-        #  Get user context
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+
+        # ==========================================================
+        #  VALIDATION
+        # ==========================================================
+        if not message or not message.strip():
+            return {"success": False, "error": "No message provided"}
+
+        # ==========================================================
+        # SESSION HISTORY (LIMITED CONTEXT)
+        # ==========================================================
+        history = sessions.get(session_id, [])
+        history = history[-5:]  # keep last 5 turns
+
+        # ==========================================================
+        #  USER DATA (NO HARDCODING)
+        # ==========================================================
         user_data = get_user_resume_data(
             user_id=user_id,
             resume_text=resume_text
         )
 
-        #  Generate AI reply
-        reply = generate_chat_response(message, user_data)
+        # ==========================================================
+        #  AI RESPONSE
+        # ==========================================================
+        reply = generate_chat_response(message, user_data, history)
 
-        # 🔊 Text → Speech (SAFE)
-        audio_output = None
-        if text_to_speech:
-            try:
-                audio_output = text_to_speech(reply)
-            except Exception as e:
-                print(" TTS failed:", e)
+        # ==========================================================
+        #  STORE HISTORY (RAG FORMAT)
+        # ==========================================================
+        history.append({
+            "question": message,
+            "answer_en": reply
+        })
+        sessions[session_id] = history
 
+        # ==========================================================
+        # TEXT → AUDIO
+        # ==========================================================
+        audio_base64 = None
+        try:
+            audio_path = generate_speech(reply, language)
+
+            with open(audio_path, "rb") as f:
+                audio_base64 = base64.b64encode(f.read()).decode()
+
+        except Exception as e:
+            print(" TTS FAILED:", e)
+
+        # ==========================================================
+        #  FINAL RESPONSE
+        # ==========================================================
         return {
             "success": True,
             "reply": reply,
-            "audio": audio_output
+            "audio": audio_base64,
+            "session_id": session_id
         }
 
     except Exception as e:
-        print("🔥 CHAT ERROR:", e)
+        print(" CHAT ERROR:", e)
         return {
             "success": False,
-            "error": str(e)
+            "error": "Internal server error"
         }
