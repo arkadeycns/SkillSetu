@@ -71,8 +71,8 @@ app.include_router(assessment_router)
 app.include_router(admin_router)
 app.include_router(audio_router)
 app.include_router(resume_router)
-app.include_router(training_router, prefix="/api/training")
-app.include_router(chat_router, prefix="/api/chat")
+app.include_router(training_router)
+app.include_router(chat_router)
 
 @app.get("/health")
 def health():
