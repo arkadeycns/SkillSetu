@@ -151,3 +151,26 @@ export const parseResume = async (resumeFile) => {
     throw error;
   }
 };
+
+// ------------------------------------------------------------------
+// 5. GET TRAINING RECOMMENDATIONS
+// ------------------------------------------------------------------
+export const getTrainingRecommendations = async (sessionId) => {
+  const TRAINING_ENDPOINT = `${(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')}/api/training/recommend`;
+  
+  try {
+    const response = await fetch(TRAINING_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: sessionId }) // Backend expects { user_id: "..." }
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch training plan");
+    
+    const result = await response.json();
+    return result.success ? result.data : null;
+  } catch (error) {
+    console.error("Training API Error:", error);
+    return null;
+  }
+};

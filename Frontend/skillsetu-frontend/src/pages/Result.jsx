@@ -1,14 +1,33 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router-dom';
-import Layout from '../layout/Layout'; // Assuming you have this from ChooseSkill
-import { Trophy, Home, Star, AlertCircle, CheckCircle } from 'lucide-react';
+import Layout from '../layout/Layout'; 
+import { Trophy, Home, Star, AlertCircle, CheckCircle, BookOpen, ArrowRight, Loader2 } from 'lucide-react';
+import { getTrainingRecommendations } from '../api/aiService';
 
 export default function Result() {
   const location = useLocation();
   const navigate = useNavigate();
 
   // Retrieve the data passed from the AIInterview page
-  const { skill, summary } = location.state || {};
+  const { skill, summary, sessionId } = location.state || {};
+  
+  // NEW: State for the training roadmap
+  const [trainingPlan, setTrainingPlan] = useState(null);
+  const [isLoadingPlan, setIsLoadingPlan] = useState(true);
+
+  // NEW: Fetch the training plan when the page loads
+  useEffect(() => {
+    async function fetchPlan() {
+      if (sessionId) {
+        const data = await getTrainingRecommendations(sessionId);
+        if (data && data.recommendations) {
+          setTrainingPlan(data.recommendations);
+        }
+      }
+      setIsLoadingPlan(false);
+    }
+    fetchPlan();
+  }, [sessionId]);
 
   // Security check: If someone tries to visit /result directly without an interview, send them back
   if (!summary) {
@@ -16,8 +35,6 @@ export default function Result() {
   }
 
   // --- SAFE DATA PARSING ---
-  // Depending on how your friend wrote the backend, 'summary' might be a string or a JSON object.
-  // We will safely extract the pieces we need.
   const score = summary.overall_score || summary.score || "Complete";
   const mainFeedback = typeof summary === 'string' ? summary : summary.feedback || summary.summary || "You have successfully completed the assessment.";
   const strengths = summary.strengths || summary.pros || [];
@@ -38,14 +55,14 @@ export default function Result() {
               Assessment <span className="text-yellow-500">Complete</span>
             </h1>
             <p className="text-lg text-slate-400 font-bold tracking-wide uppercase">
-              {skill} Trade
+              {skill}
             </p>
           </div>
 
           {/* Main Card */}
           <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 md:p-10 shadow-2xl mb-8">
             
-            {/* Score Display (Only shows if backend provided a number) */}
+            {/* Score Display */}
             {score !== "Complete" && (
               <div className="flex flex-col items-center justify-center mb-10 pb-10 border-b border-slate-700">
                 <p className="text-sm text-slate-400 uppercase tracking-widest font-black mb-2">Overall Score</p>
@@ -64,9 +81,9 @@ export default function Result() {
               </p>
             </div>
 
-            {/* Dynamic Strengths & Weaknesses (Only shows if backend provided arrays) */}
+            {/* Dynamic Strengths & Weaknesses */}
             {(strengths.length > 0 || weaknesses.length > 0) && (
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid md:grid-cols-2 gap-6 mb-10">
                 {strengths.length > 0 && (
                   <div className="bg-green-500/10 border border-green-500/20 p-5 rounded-2xl">
                     <h3 className="text-green-500 font-bold flex items-center gap-2 mb-3">
@@ -85,7 +102,7 @@ export default function Result() {
                 {weaknesses.length > 0 && (
                   <div className="bg-red-500/10 border border-red-500/20 p-5 rounded-2xl">
                     <h3 className="text-red-500 font-bold flex items-center gap-2 mb-3">
-                      <AlertCircle size={20} /> Areas to Improve
+                      <AlertCircle size={20} /> Skill Gaps Detected
                     </h3>
                     <ul className="space-y-2">
                       {weaknesses.map((item, idx) => (
@@ -98,16 +115,65 @@ export default function Result() {
                 )}
               </div>
             )}
+
+            {/* 🔥 NEW: AI Training Roadmap */}
+            <div className="bg-blue-500/10 border border-blue-500/20 p-6 rounded-2xl">
+              <h3 className="text-blue-400 text-xl font-bold flex items-center gap-2 mb-2">
+                <BookOpen size={24} /> Upskilling Roadmap
+              </h3>
+              
+              {isLoadingPlan ? (
+                <div className="flex items-center gap-3 text-blue-400 p-4">
+                  <Loader2 className="animate-spin" size={20} />
+                  <span>AI is generating your custom curriculum...</span>
+                </div>
+              ) : trainingPlan && trainingPlan.length > 0 ? (
+                <div className="mt-4 space-y-4">
+                  <p className="text-slate-400 text-sm mb-4">Focus on these topics to improve your technical profile:</p>
+                  {trainingPlan.map((module, idx) => (
+                    <div key={idx} className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                      <div className="flex justify-between items-center mb-2">
+                        <h4 className="text-white font-bold text-lg">{module.title}</h4>
+                        <span className={`text-xs font-black uppercase tracking-wider px-2 py-1 rounded-md ${
+                          module.priority === 'High' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-500'
+                        }`}>
+                          {module.priority} Priority
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {module.plan.map((topic, tIdx) => (
+                          <span key={tIdx} className="bg-blue-600/20 border border-blue-500/30 text-blue-300 text-xs px-2 py-1 rounded-md">
+                            {topic}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-400 text-sm mt-2">No specific training modules recommended at this time.</p>
+              )}
+            </div>
+
           </div>
 
           {/* Action Buttons */}
-          <div className="flex justify-center">
+          <div className="flex flex-col sm:flex-row justify-center gap-4">
             <button
-              onClick={() => navigate('/chooseskill')}
-              className="flex items-center gap-3 px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded-2xl font-black text-lg transition-all shadow-[0_10px_30px_rgba(234,179,8,0.2)] hover:-translate-y-1"
+              onClick={() => navigate('/')}
+              className="flex items-center justify-center gap-3 px-8 py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-2xl font-bold transition-all shadow-lg"
             >
-              <Home size={24} />
+              <Home size={20} />
               Return Home
+            </button>
+            
+            {/* 🔥 NEW: Jump to Chat */}
+            <button
+              onClick={() => navigate('/guidance-chat', { state: { sessionId } })}
+              className="flex items-center justify-center gap-3 px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded-2xl font-black transition-all shadow-[0_10px_30px_rgba(234,179,8,0.2)] hover:-translate-y-1"
+            >
+              Start AI Guidance Chat
+              <ArrowRight size={20} />
             </button>
           </div>
 

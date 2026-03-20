@@ -63,7 +63,6 @@ export default function AIInterview() {
     setIsProcessing(false);
 
     if (aiResult && aiResult.audioUrl) {
-      // FIX APPLIED HERE: Now we pass aiResult.text so the RAG feedback shows up!
       setMessages(prev => [...prev, { sender: 'ai', text: aiResult.text, audioUrl: aiResult.audioUrl }]);
     } else if (aiResult && aiResult.error) {
       alert(aiResult.error);
@@ -72,7 +71,7 @@ export default function AIInterview() {
     }
   };
 
-  // --- NEW: HANDLE ENDING THE INTERVIEW ---
+  // --- HANDLE ENDING THE INTERVIEW ---
   const handleEndInterview = async () => {
     if (isProcessing) return; 
 
@@ -88,7 +87,8 @@ export default function AIInterview() {
         navigate("/result", { 
           state: { 
             skill: selectedSkill,
-            summary: summaryData 
+            summary: summaryData,
+            sessionId: sessionId
           } 
         });
       } else {
