@@ -20,8 +20,9 @@ export default function Result() {
     async function fetchPlan() {
       if (sessionId) {
         const data = await getTrainingRecommendations(sessionId);
-        if (data && data.recommendations) {
-          setTrainingPlan(data.recommendations);
+        // Fixed: Accept either the nested 'recommendations' object or the raw object directly
+        if (data) {
+          setTrainingPlan(data.recommendations || data);
         }
       }
       setIsLoadingPlan(false);
@@ -131,7 +132,6 @@ export default function Result() {
                 <div className="mt-4 space-y-4">
                   <p className="text-slate-400 text-sm mb-4">Focus on these topics to improve your technical profile:</p>
                   
-                  {/* Updated mapping to match the new JSON structure */}
                   {trainingPlan.modules.map((mod, idx) => (
                     <div key={idx} className="bg-slate-900/50 p-5 rounded-xl border border-slate-700">
                       <div className="flex justify-between items-start mb-3">
@@ -158,7 +158,7 @@ export default function Result() {
               ) : (
                 <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-700 mt-4">
                    <p className="text-slate-300 leading-relaxed text-sm">
-                     {typeof trainingPlan === 'object' && trainingPlan.plan 
+                     {trainingPlan?.plan 
                         ? trainingPlan.plan 
                         : "No specific training modules recommended at this time."}
                    </p>

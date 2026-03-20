@@ -70,8 +70,9 @@ export const ResumeParser = () => {
       setIsLoadingPlan(true);
       
       const planData = await getTrainingRecommendations(currentSessionId);
-      if (planData && planData.recommendations) {
-        setTrainingPlan(planData.recommendations);
+      // Fixed: Accept either the nested 'recommendations' object or the raw object directly
+      if (planData) {
+        setTrainingPlan(planData.recommendations || planData);
       }
 
     } catch (error) {
@@ -215,7 +216,6 @@ export const ResumeParser = () => {
                 <div className="mt-4 space-y-4">
                   <p className="text-slate-400 text-sm mb-4">Based on your profile, focus on these modules:</p>
                   
-                  {/* Updated mapping to match the new JSON structure */}
                   {trainingPlan.modules.map((mod, idx) => (
                     <div key={idx} className="bg-slate-900/60 p-5 rounded-xl border border-slate-700">
                       <div className="flex justify-between items-start mb-3">
@@ -240,9 +240,9 @@ export const ResumeParser = () => {
                   ))}
                 </div>
               ) : (
-                <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700 mt-4">
+                <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-700 mt-4">
                    <p className="text-slate-300 leading-relaxed text-sm">
-                     {typeof trainingPlan === 'object' && trainingPlan.plan 
+                     {trainingPlan?.plan 
                         ? trainingPlan.plan 
                         : "Your profile is highly optimized. No critical skill gaps detected right now."}
                    </p>
