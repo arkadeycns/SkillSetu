@@ -2,26 +2,53 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from "react-router-dom";
 import { Mic, Square, Loader2, User, Bot, Trash2, Send, ChevronLeft, BookOpen } from 'lucide-react'; 
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
-import { sendAudioToGuidanceChat } from '../api/aiService';
+import { sendAudioToGuidanceChat, startGuidanceChat } from '../api/aiService';
 
 export default function GuidanceChat() {
   const navigate = useNavigate();
   const location = useLocation();
   
   const [sessionId] = useState(location.state?.sessionId || `chat_${Date.now()}`);
+  const sessionLang = location.state?.lang || "English";
+
   const { isRecording, startRecording, stopRecording } = useVoiceRecorder();
   
-  const [messages, setMessages] = useState([
-    { 
-      sender: 'ai', 
-      text: "Hello! I've analyzed your skill gaps. Press the microphone and tell me what topic you'd like to start learning today." 
-    }
-  ]);
-  const [isProcessing, setIsProcessing] = useState(false);
+  // Start empty. The backend will send the first message!
+  const [messages, setMessages] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(true); 
   const [stagedAudioBlob, setStagedAudioBlob] = useState(null);
   const [stagedAudioUrl, setStagedAudioUrl] = useState(null);
   
   const chatEndRef = useRef(null);
+
+  // ==========================================================
+  // THE HANDSHAKE (Calling the new /start endpoint)
+  // ==========================================================
+  useEffect(() => {
+    const initializeChat = async () => {
+      try {
+        const aiResult = await startGuidanceChat(sessionId, sessionLang);
+        
+        if (aiResult && (aiResult.text || aiResult.audioUrl)) {
+          setMessages([{ 
+            sender: 'ai', 
+            text: aiResult.text, 
+            audioUrl: aiResult.audioUrl 
+          }]);
+        } else {
+          setMessages([{ sender: 'ai', text: "Hello! What would you like to learn today?" }]);
+        }
+      } catch (error) {
+        setMessages([{ sender: 'ai', text: "Hello! What would you like to learn today?" }]);
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+
+    if (messages.length === 0) {
+      initializeChat();
+    }
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -46,7 +73,6 @@ export default function GuidanceChat() {
   const handleSendAudio = async () => {
     if (!stagedAudioBlob) return;
 
-    // Add user's audio to the UI immediately
     setMessages(prev => [...prev, { sender: 'user', audioUrl: stagedAudioUrl }]);
     
     const blobToSend = stagedAudioBlob;
@@ -55,8 +81,8 @@ export default function GuidanceChat() {
     
     setIsProcessing(true);
     
-    // Call the new Chat endpoint!
-    const aiResult = await sendAudioToGuidanceChat(blobToSend, sessionId);
+    // Pass the language context to every chat!
+    const aiResult = await sendAudioToGuidanceChat(blobToSend, sessionId, sessionLang);
     setIsProcessing(false);
 
     if (aiResult && (aiResult.text || aiResult.audioUrl)) {
@@ -76,7 +102,7 @@ export default function GuidanceChat() {
     <div className="flex flex-col h-screen bg-slate-900 text-slate-200 font-sans">
       
       {/* Header */}
-      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700 p-4 flex items-center justify-between relative">
+      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700 p-4 flex items-center justify-between relative z-20">
         <button 
           onClick={() => navigate(-1)}
           className="p-2 hover:bg-slate-700 rounded-full transition-colors text-slate-400"
@@ -89,12 +115,20 @@ export default function GuidanceChat() {
           <h1 className="text-lg font-bold text-white tracking-wide uppercase">Career Coach</h1>
         </div>
 
-        {/* Empty div to balance flexbox */}
         <div className="w-10"></div> 
       </header>
 
       {/* Chat Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 custom-scrollbar bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-800/20 via-slate-900 to-slate-900">
+        
+        {messages.length === 0 && isProcessing && (
+          <div className="h-full flex flex-col items-center justify-center animate-pulse mt-20">
+            <Bot size={64} className="text-blue-500/50 mb-6 animate-bounce" />
+            <h2 className="text-2xl font-bold text-white mb-2">Connecting to Coach...</h2>
+            <p className="text-slate-400">Preparing your personalized session</p>
+          </div>
+        )}
+
         {messages.map((msg, index) => (
           <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
             
@@ -129,10 +163,10 @@ export default function GuidanceChat() {
           </div>
         ))}
 
-        {isProcessing && (
+        {messages.length > 0 && isProcessing && (
           <div className="flex justify-start items-center space-x-3 text-blue-400 bg-slate-800/30 w-fit p-4 rounded-2xl border border-slate-700">
             <Loader2 className="animate-spin" size={20} />
-            <span className="text-sm font-bold tracking-wide animate-pulse">Coach is typing...</span>
+            <span className="text-sm font-bold tracking-wide animate-pulse">Coach is thinking...</span>
           </div>
         )}
 
@@ -140,7 +174,7 @@ export default function GuidanceChat() {
       </div>
 
       {/* Action Bar */}
-      <div className="bg-slate-800/80 backdrop-blur-xl border-t border-slate-700 p-6 flex justify-center items-center min-h-[120px]">
+      <div className={`bg-slate-800/80 backdrop-blur-xl border-t border-slate-700 p-6 flex justify-center items-center min-h-[120px] transition-opacity ${messages.length === 0 ? 'opacity-50 pointer-events-none' : ''}`}>
         
         {stagedAudioUrl ? (
           <div className="flex items-center gap-4 w-full max-w-lg bg-slate-900 p-3 pr-4 rounded-2xl shadow-2xl border border-blue-500/30 animate-fade-in-up">

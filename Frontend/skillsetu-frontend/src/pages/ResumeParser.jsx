@@ -14,7 +14,8 @@ export const ResumeParser = () => {
   // State for the professional roadmap
   const [trainingPlan, setTrainingPlan] = useState(null);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
-  // We need a session ID to pass to the chat. If the backend doesn't return one, we generate a temp one.
+  
+  // Session ID required to initialize the AI chat context
   const [sessionId, setSessionId] = useState("");
 
   const handleDragOver = (e) => {
@@ -68,8 +69,6 @@ export const ResumeParser = () => {
       setParseStep("Generating custom upskilling roadmap...");
       setIsLoadingPlan(true);
       
-      // In a real app, you might need to pass the parsed text/skills to the backend first, 
-      // but assuming your backend can handle the user_id context:
       const planData = await getTrainingRecommendations(currentSessionId);
       if (planData && planData.recommendations) {
         setTrainingPlan(planData.recommendations);
@@ -77,7 +76,7 @@ export const ResumeParser = () => {
 
     } catch (error) {
       console.error("Resume parsing failed:", error);
-      alert(error.message || "Failed to parse resume. Please check your backend.");
+      alert(error.message || "Failed to parse resume. Please check your backend connection.");
       setFile(null);
     } finally {
       setIsParsing(false);
@@ -113,7 +112,7 @@ export const ResumeParser = () => {
       {/* Main Interface */}
       <div className="w-full max-w-3xl bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-8 shadow-2xl animate-fade-in-up">
         
-        {/* State 1: Upload Zone */}
+        {/* Upload Zone */}
         {!isParsing && !parsedResult && (
           <div 
             onDragOver={handleDragOver}
@@ -149,7 +148,7 @@ export const ResumeParser = () => {
           </div>
         )}
 
-        {/* State 2: Parsing Animation */}
+        {/* Parsing Animation */}
         {isParsing && (
           <div className="py-16 flex flex-col items-center justify-center space-y-6">
             <div className="relative w-20 h-20">
@@ -163,7 +162,7 @@ export const ResumeParser = () => {
           </div>
         )}
 
-        {/* State 3: Parsed Results & Roadmap */}
+        {/* Parsed Results & Roadmap */}
         {parsedResult && !isParsing && (
           <div className="space-y-8 animate-fade-in-up">
             
@@ -212,23 +211,28 @@ export const ResumeParser = () => {
                   <Loader2 className="animate-spin" size={20} />
                   <span>Generating your custom corporate curriculum...</span>
                 </div>
-              ) : trainingPlan && trainingPlan.length > 0 ? (
+              ) : trainingPlan?.modules && trainingPlan.modules.length > 0 ? (
                 <div className="mt-4 space-y-4">
-                  <p className="text-slate-400 text-sm mb-4">Based on your resume gaps, focus on these modules to increase your market value:</p>
-                  {trainingPlan.map((module, idx) => (
-                    <div key={idx} className="bg-slate-900/60 p-4 rounded-xl border border-slate-700">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="text-white font-bold text-lg">{module.title}</h4>
-                        <span className={`text-xs font-black uppercase tracking-wider px-2 py-1 rounded-md ${
-                          module.priority === 'High' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-500'
-                        }`}>
-                          {module.priority}
+                  <p className="text-slate-400 text-sm mb-4">Based on your profile, focus on these modules:</p>
+                  
+                  {/* Updated mapping to match the new JSON structure */}
+                  {trainingPlan.modules.map((mod, idx) => (
+                    <div key={idx} className="bg-slate-900/60 p-5 rounded-xl border border-slate-700">
+                      <div className="flex justify-between items-start mb-3">
+                        <h4 className="text-white font-bold text-lg">{mod.module}</h4>
+                        <span className="text-xs font-black uppercase tracking-wider px-2 py-1 rounded-md bg-blue-500/20 text-blue-400">
+                          {mod.duration || "Self-Paced"}
                         </span>
                       </div>
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        {module.plan.map((topic, tIdx) => (
-                          <span key={tIdx} className="bg-blue-600/20 border border-blue-500/30 text-blue-300 text-xs px-2 py-1 rounded-md">
-                            {topic}
+                      
+                      <p className="text-slate-400 text-sm italic mb-3">
+                        Practice: {mod.practice_task}
+                      </p>
+
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {mod.skills_to_learn && mod.skills_to_learn.map((skill, sIdx) => (
+                          <span key={sIdx} className="bg-blue-600/20 border border-blue-500/30 text-blue-300 text-xs px-2 py-1 rounded-md">
+                            {skill}
                           </span>
                         ))}
                       </div>
@@ -236,7 +240,13 @@ export const ResumeParser = () => {
                   ))}
                 </div>
               ) : (
-                <p className="text-slate-400 text-sm mt-2">Your profile is highly optimized. No critical skill gaps detected.</p>
+                <div className="bg-slate-900/60 p-5 rounded-xl border border-slate-700 mt-4">
+                   <p className="text-slate-300 leading-relaxed text-sm">
+                     {typeof trainingPlan === 'object' && trainingPlan.plan 
+                        ? trainingPlan.plan 
+                        : "Your profile is highly optimized. No critical skill gaps detected right now."}
+                   </p>
+                </div>
               )}
             </div>
 

@@ -9,13 +9,13 @@ export default function Result() {
   const navigate = useNavigate();
 
   // Retrieve the data passed from the AIInterview page
-  const { skill, summary, sessionId } = location.state || {};
+  const { skill, summary, sessionId, lang } = location.state || {};
   
-  // NEW: State for the training roadmap
+  // State for the training roadmap
   const [trainingPlan, setTrainingPlan] = useState(null);
   const [isLoadingPlan, setIsLoadingPlan] = useState(true);
 
-  // NEW: Fetch the training plan when the page loads
+  // Fetch the training plan when the page loads
   useEffect(() => {
     async function fetchPlan() {
       if (sessionId) {
@@ -29,12 +29,12 @@ export default function Result() {
     fetchPlan();
   }, [sessionId]);
 
-  //If someone tries to visit /result directly without an interview, send them back
+  // If someone tries to visit /result directly without an interview, send them back
   if (!summary) {
     return <Navigate to="/chooseskill" replace />;
   }
 
-  // --- SAFE DATA PARSING ---
+  // Safe data parsing to handle different summary shapes
   const score = summary.overall_score || summary.score || "Complete";
   const mainFeedback = typeof summary === 'string' ? summary : summary.feedback || summary.summary || "You have successfully completed the assessment.";
   const strengths = summary.strengths || summary.pros || [];
@@ -127,23 +127,28 @@ export default function Result() {
                   <Loader2 className="animate-spin" size={20} />
                   <span>AI is generating your custom curriculum...</span>
                 </div>
-              ) : trainingPlan && trainingPlan.length > 0 ? (
+              ) : trainingPlan?.modules && trainingPlan.modules.length > 0 ? (
                 <div className="mt-4 space-y-4">
                   <p className="text-slate-400 text-sm mb-4">Focus on these topics to improve your technical profile:</p>
-                  {trainingPlan.map((module, idx) => (
-                    <div key={idx} className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="text-white font-bold text-lg">{module.title}</h4>
-                        <span className={`text-xs font-black uppercase tracking-wider px-2 py-1 rounded-md ${
-                          module.priority === 'High' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-500'
-                        }`}>
-                          {module.priority} Priority
+                  
+                  {/* Updated mapping to match the new JSON structure */}
+                  {trainingPlan.modules.map((mod, idx) => (
+                    <div key={idx} className="bg-slate-900/50 p-5 rounded-xl border border-slate-700">
+                      <div className="flex justify-between items-start mb-3">
+                        <h4 className="text-white font-bold text-lg">{mod.module}</h4>
+                        <span className="text-xs font-black uppercase tracking-wider px-2 py-1 rounded-md bg-blue-500/20 text-blue-400">
+                          {mod.duration || "Self-Paced"}
                         </span>
                       </div>
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        {module.plan.map((topic, tIdx) => (
-                          <span key={tIdx} className="bg-blue-600/20 border border-blue-500/30 text-blue-300 text-xs px-2 py-1 rounded-md">
-                            {topic}
+                      
+                      <p className="text-slate-400 text-sm italic mb-3">
+                        Practice: {mod.practice_task}
+                      </p>
+
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {mod.skills_to_learn && mod.skills_to_learn.map((skillItem, sIdx) => (
+                          <span key={sIdx} className="bg-blue-600/20 border border-blue-500/30 text-blue-300 text-xs px-2 py-1 rounded-md">
+                            {skillItem}
                           </span>
                         ))}
                       </div>
@@ -151,7 +156,13 @@ export default function Result() {
                   ))}
                 </div>
               ) : (
-                <p className="text-slate-400 text-sm mt-2">No specific training modules recommended at this time.</p>
+                <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-700 mt-4">
+                   <p className="text-slate-300 leading-relaxed text-sm">
+                     {typeof trainingPlan === 'object' && trainingPlan.plan 
+                        ? trainingPlan.plan 
+                        : "No specific training modules recommended at this time."}
+                   </p>
+                </div>
               )}
             </div>
 
@@ -167,9 +178,15 @@ export default function Result() {
               Return Home
             </button>
             
-            {/* Jump to Chat */}
+            {/* Jump to Chat with context passed */}
             <button
-              onClick={() => navigate('/guidance-chat', { state: { sessionId } })}
+              onClick={() => navigate('/guidance-chat', { 
+                state: { 
+                  sessionId: sessionId,
+                  skill: skill,
+                  lang: lang || "English"
+                } 
+              })}
               className="flex items-center justify-center gap-3 px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded-2xl font-black transition-all shadow-[0_10px_30px_rgba(234,179,8,0.2)] hover:-translate-y-1"
             >
               Start AI Guidance Chat

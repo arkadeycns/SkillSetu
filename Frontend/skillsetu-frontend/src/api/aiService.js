@@ -1,11 +1,10 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 const ASSESS_VOICE_ENDPOINT = `${API_BASE_URL}/api/assessment/assess-voice`;
 const START_SESSION_ENDPOINT = `${API_BASE_URL}/api/assessment/start-session`;
-// MISSING ENDPOINT RESTORED:
 const RESUME_PARSE_ENDPOINT = `${API_BASE_URL}/api/v1/resume/parse`;
 
 // ------------------------------------------------------------------
-// 1. START SESSION (The Handshake)
+// 1. START SESSION (AI Interview)
 // ------------------------------------------------------------------
 export const startInterviewSession = async (skill, language) => {
   try {
@@ -20,7 +19,6 @@ export const startInterviewSession = async (skill, language) => {
 
     if (!response.ok) throw new Error("Failed to start AI session");
 
-    // 🛡️ BULLETPROOF CHECK: Is it JSON or a Raw File?
     const contentType = response.headers.get("content-type");
     
     if (contentType && contentType.includes("application/json")) {
@@ -32,7 +30,6 @@ export const startInterviewSession = async (skill, language) => {
         initialAudioUrl: audioUrl       
       };
     } else {
-      // If it's a raw audio file (FileResponse)
       const audioBlob = await response.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
       const sessionId = response.headers.get("X-Session-ID") || `sess_${Date.now()}`;
@@ -51,7 +48,7 @@ export const startInterviewSession = async (skill, language) => {
 };
 
 // ------------------------------------------------------------------
-// 2. THE INTERVIEW LOOP (Send Audio + Session ID)
+// 2. SEND AUDIO TO AI (AI Interview)
 // ------------------------------------------------------------------
 export const sendAudioToAI = async (audioBlob, sessionId) => {
   const formData = new FormData();
@@ -77,7 +74,6 @@ export const sendAudioToAI = async (audioBlob, sessionId) => {
       throw new Error(`Backend error: ${detail}`);
     }
 
-    // 🛡️ BULLETPROOF CHECK: Is it JSON or a Raw File?
     const contentType = response.headers.get("content-type");
     
     if (contentType && contentType.includes("application/json")) {
@@ -88,7 +84,6 @@ export const sendAudioToAI = async (audioBlob, sessionId) => {
         text: data.interviewer_text || data.question 
       };
     } else {
-      // It's a raw audio file (FileResponse)
       const aiResponseBlob = await response.blob();
       const aiAudioUrl = URL.createObjectURL(aiResponseBlob);
       return { 
@@ -104,7 +99,7 @@ export const sendAudioToAI = async (audioBlob, sessionId) => {
 };
 
 // ------------------------------------------------------------------
-// 3. GET INTERVIEW SUMMARY & RESULT
+// 3. GET INTERVIEW SUMMARY
 // ------------------------------------------------------------------
 export const getInterviewSummary = async (sessionId) => {
   try {
@@ -124,7 +119,7 @@ export const getInterviewSummary = async (sessionId) => {
 };
 
 // ------------------------------------------------------------------
-// 4. PARSE RESUME (The Missing Export Restored!)
+// 4. PARSE RESUME
 // ------------------------------------------------------------------
 export const parseResume = async (resumeFile) => {
   const formData = new FormData();
@@ -156,13 +151,13 @@ export const parseResume = async (resumeFile) => {
 // 5. GET TRAINING RECOMMENDATIONS
 // ------------------------------------------------------------------
 export const getTrainingRecommendations = async (sessionId) => {
-  const TRAINING_ENDPOINT = `${(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')}/api/training/recommend`;
+  const TRAINING_ENDPOINT = `${API_BASE_URL}/api/training/recommend`;
   
   try {
     const response = await fetch(TRAINING_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: sessionId }) // Backend expects { user_id: "..." }
+      body: JSON.stringify({ user_id: sessionId }) 
     });
 
     if (!response.ok) throw new Error("Failed to fetch training plan");
@@ -176,34 +171,50 @@ export const getTrainingRecommendations = async (sessionId) => {
 };
 
 // ------------------------------------------------------------------
-// 6. AI GUIDANCE CHAT (Voice + Text)
+// 6. START GUIDANCE CHAT (Initialize Coach Session)
 // ------------------------------------------------------------------
-export const sendAudioToGuidanceChat = async (audioBlob, sessionId) => {
-  const CHAT_ENDPOINT = `${(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')}/api/chat`;
+export const startGuidanceChat = async (sessionId, language = "en") => {
+  const START_ENDPOINT = `${API_BASE_URL}/api/chat/start`;
+  
+  const formData = new FormData();
+  formData.append("session_id", sessionId);
+  formData.append("language", language);
+
+  try {
+    const response = await fetch(START_ENDPOINT, { method: "POST", body: formData });
+    if (!response.ok) throw new Error("Failed to start AI Guide session");
+    
+    const data = await response.json();
+    const aiAudioUrl = data.audio ? `data:audio/mpeg;base64,${data.audio}` : null;
+    
+    return { text: data.greeting, audioUrl: aiAudioUrl };
+  } catch (error) {
+    console.error("Chat Init Error:", error);
+    return { error: "Failed to connect to AI Guide." };
+  }
+};
+
+// ------------------------------------------------------------------
+// 7. SEND AUDIO TO GUIDANCE CHAT (Ongoing Coach Conversation)
+// ------------------------------------------------------------------
+export const sendAudioToGuidanceChat = async (audioBlob, sessionId, language = "en") => {
+  const CHAT_ENDPOINT = `${API_BASE_URL}/api/chat`;
   
   const formData = new FormData();
   const extension = audioBlob?.type?.includes("mp4") ? "m4a" : "webm";
   
   formData.append("audio", audioBlob, `chat_audio.${extension}`);
   formData.append("session_id", sessionId);
+  formData.append("language", language);
 
   try {
-    const response = await fetch(CHAT_ENDPOINT, {
-      method: "POST",
-      body: formData,
-    });
-
+    const response = await fetch(CHAT_ENDPOINT, { method: "POST", body: formData });
     if (!response.ok) throw new Error("Failed to connect to AI Guide");
-
-    const data = await response.json();
     
+    const data = await response.json();
     const aiAudioUrl = data.audio ? `data:audio/mpeg;base64,${data.audio}` : null;
-
-    return { 
-      text: data.reply,
-      audioUrl: aiAudioUrl
-    };
-
+    
+    return { text: data.reply, audioUrl: aiAudioUrl };
   } catch (error) {
     console.error("Chat API Error:", error);
     return { error: "Failed to connect to AI Guide." };
