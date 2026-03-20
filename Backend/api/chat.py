@@ -22,6 +22,7 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 # ==========================================================
 #  NORMAL CHAT
 # ==========================================================
+@router.post("")
 @router.post("/")
 async def chat(
     message: str = Form(None),
