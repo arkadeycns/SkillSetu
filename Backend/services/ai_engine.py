@@ -1,5 +1,7 @@
 from AI_Service.src.rag.qa import rag_query
 import threading
+import json
+import re
 
 
 # ==========================================================
@@ -20,7 +22,7 @@ def _safe_rag_query(result_container, question, user_answer, history):
 
 
 # ==========================================================
-#  CHAT ENGINE (IMPROVED - NO HARDCODING)
+#  CHAT ENGINE
 # ==========================================================
 
 def generate_chat_response(message, user_data, history):
@@ -71,7 +73,53 @@ Instructions:
 
 
 # ==========================================================
-#  ROADMAP GENERATION (IMPROVED - NO HARDCODING)
+#  GREETING GENERATION
+# ==========================================================
+
+def generate_greeting(user_data, language="en"):
+
+    skills = user_data.get("skills", [])
+    experience = user_data.get("experience_level", "unknown")
+
+    prompt = f"""
+You are a friendly career coach.
+
+User Info:
+- Skills: {skills}
+- Experience: {experience}
+
+Task:
+Generate a SHORT welcoming greeting.
+
+Rules:
+- Max 2 sentences
+- Friendly and motivating
+- Simple language
+- Personalize using their skills if possible
+- No extra explanation
+"""
+
+    result_container = {}
+
+    thread = threading.Thread(
+        target=_safe_rag_query,
+        args=(result_container, prompt, "", [])
+    )
+
+    thread.start()
+    thread.join(timeout=6)
+
+    if thread.is_alive():
+        return "Hello! I am here to guide you."
+
+    if "error" in result_container:
+        return "Hello! Let’s get started."
+
+    return result_container.get("response", "Hello! Let’s begin.")
+
+
+# ==========================================================
+#  ROADMAP GENERATION
 # ==========================================================
 
 def generate_roadmap(user_data):
@@ -120,7 +168,7 @@ IMPORTANT:
 
 
 # ==========================================================
-#  TRAINING RECOMMENDATIONS (FIXED - NO HARDCODING)
+#  TRAINING RECOMMENDATIONS (STRICT JSON + SAFE PARSE)
 # ==========================================================
 
 def generate_training_recommendations(user_data):
@@ -138,15 +186,24 @@ User Info:
 - Experience: {experience}
 
 Your task:
-1. Identify user's job role
-2. Identify missing skills
-3. Suggest learning order
-4. Provide simple practice plan
+Return STRICT JSON ONLY.
 
-IMPORTANT:
-- Do NOT assume software field unless explicitly mentioned
-- Focus on practical real-world skills
-- Keep response simple
+Format:
+[
+  {{
+    "module": "string",
+    "skills_to_learn": ["skill1", "skill2"],
+    "duration": "string",
+    "practice_task": "string"
+  }}
+]
+
+Rules:
+- Output MUST be valid JSON
+- NO text outside JSON
+- Minimum 3 modules
+- Focus on practical skills
+- Do NOT assume software field unless mentioned
 """
 
     result_container = {}
@@ -160,15 +217,26 @@ IMPORTANT:
     thread.join(timeout=10)
 
     if thread.is_alive():
-        return {
-            "plan": "Taking too long. Please try again."
-        }
+        return {"modules": []}
 
     if "error" in result_container:
-        return {
-            "plan": "Error generating recommendations"
-        }
+        return {"modules": []}
 
-    return {
-        "plan": result_container.get("response", "")
-    }
+    raw_response = result_container.get("response", "")
+
+    # ==========================================================
+    #  SAFE JSON EXTRACTION 
+    # ==========================================================
+    try:
+        json_match = re.search(r"\[.*\]", raw_response, re.DOTALL)
+
+        if json_match:
+            parsed = json.loads(json_match.group())
+            if isinstance(parsed, list):
+                return {"modules": parsed}
+
+        return {"modules": []}
+
+    except Exception:
+        print("JSON PARSE ERROR:", raw_response)
+        return {"modules": []}
