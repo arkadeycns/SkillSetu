@@ -31,6 +31,8 @@ async def chat(
     language: str = Form("en")
 ):
     try:
+        audio_lang = "hi" if language.lower() == "hinglish" else language
+
         # AUDIO → TEXT
         if audio:
             temp_path = f"{TEMP_DIR}/audio_{int(time.time())}_{audio.filename}"
@@ -39,7 +41,8 @@ async def chat(
                 with open(temp_path, "wb") as buffer:
                     shutil.copyfileobj(audio.file, buffer)
 
-                message = transcribe_audio(temp_path, language=language)
+                # Pass audio_lang instead of language
+                message = transcribe_audio(temp_path, language=audio_lang)
 
             finally:
                 if os.path.exists(temp_path):
@@ -56,6 +59,7 @@ async def chat(
             resume_text=resume_text
         )
 
+        # The Text AI still gets the original language setting inside the engine if needed
         reply = generate_chat_response(message, user_data, history)
 
         history.append({
@@ -66,7 +70,8 @@ async def chat(
 
         audio_base64 = None
         try:
-            audio_path = generate_speech(reply, language)
+            # Pass audio_lang instead of language
+            audio_path = generate_speech(reply, audio_lang)
             with open(audio_path, "rb") as f:
                 audio_base64 = base64.b64encode(f.read()).decode()
         except Exception as e:
@@ -98,11 +103,14 @@ async def start_chat(
     language: str = Form("en")
 ):
     try:
+        audio_lang = "hi" if language.lower() == "hinglish" else language
+
         user_data = get_user_resume_data(
             user_id=user_id,
             resume_text=resume_text
         )
 
+        # The Text AI still gets "Hinglish" so it writes in mixed language
         greeting = generate_greeting(user_data, language)
 
         # reset session (no pollution)
@@ -110,7 +118,8 @@ async def start_chat(
 
         audio_base64 = None
         try:
-            audio_path = generate_speech(greeting, language)
+            # Pass audio_lang instead of language
+            audio_path = generate_speech(greeting, audio_lang)
             with open(audio_path, "rb") as f:
                 audio_base64 = base64.b64encode(f.read()).decode()
         except Exception as e:
