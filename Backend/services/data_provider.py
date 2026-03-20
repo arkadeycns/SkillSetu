@@ -1,6 +1,7 @@
-def get_user_resume_data(user_id):
-    #  (replace with DB later)
+def get_user_resume_data(user_id=None, resume_text=None):
+
+    # 🔥 MOCK DATA (DB will replace later)
     return {
-        "skills": ["C++", "Arrays"],
+        "skills": ["Arrays", "C++"],
         "experience_level": "beginner"
     }

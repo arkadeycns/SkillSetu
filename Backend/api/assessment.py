@@ -18,9 +18,9 @@ from AI_Service.src.stt.transcriber import transcribe_audio
 from AI_Service.src.rag.qa import rag_query
 from services.tts_service import generate_speech
 
-# 🔥 NEW IMPORTS
+# 🔥 YOUR SERVICES
 from services.data_provider import get_user_resume_data
-from services.ai_engine import generate_training_recommendations
+# ❌ REMOVED: generate_training_recommendations (not needed here)
 
 router = APIRouter(prefix="/api/assessment", tags=["Assessment"])
 
@@ -49,10 +49,16 @@ def start_session(skill: str = Form(...), language: str = Form(...)):
         else:
             localized_question = translate_to_user_language(question_en, language)
 
-        audio_path = generate_speech(localized_question, language)
+        # 🔥 SAFE TTS
+        try:
+            audio_path = generate_speech(localized_question, language)
 
-        with open(audio_path, "rb") as f:
-            audio_base64 = base64.b64encode(f.read()).decode()
+            with open(audio_path, "rb") as f:
+                audio_base64 = base64.b64encode(f.read()).decode()
+
+        except Exception as e:
+            print("⚠️ TTS FAILED:", e)
+            audio_base64 = None
 
         return JSONResponse({
             "session_id": session.session_id,
@@ -109,7 +115,7 @@ async def process_voice_assessment(
             english_user_text = translate_to_english(user_text, user_lang)
 
         # ===============================
-        # GET USER CONTEXT (🔥 NEW)
+        # GET USER CONTEXT
         # ===============================
 
         user_data = get_user_resume_data(user_id=session.session_id)
@@ -119,7 +125,7 @@ async def process_voice_assessment(
         weaknesses = [s for s in expected_skills if s not in skills]
 
         # ===============================
-        # RAG FEEDBACK (🔥 MODIFIED)
+        # RAG FEEDBACK
         # ===============================
 
         chat_history = [
@@ -138,7 +144,6 @@ async def process_voice_assessment(
 
         if outcome.get("use_qa_feedback", True):
 
-            # 🔥 PERSONALIZED CONTEXT
             context = f"""
             User Skills: {skills}
             User Weakness: {weaknesses}
@@ -155,7 +160,7 @@ async def process_voice_assessment(
         next_step = outcome.get("next_step", "advance")
 
         # ===============================
-        # FLOW CONTROL (UNCHANGED)
+        # FLOW CONTROL
         # ===============================
 
         if prompt["stage"] in {"primary", "retry_primary"}:
@@ -200,7 +205,6 @@ async def process_voice_assessment(
         else:
             feedback_en = ai_feedback_en or outcome.get("feedback", "")
             next_q = next_prompt["question"]
-
             interviewer_text_en = f"{feedback_en} Next question: {next_q}" if feedback_en else next_q
 
         if user_lang.lower().startswith("en"):
@@ -214,16 +218,15 @@ async def process_voice_assessment(
         # TEXT TO SPEECH
         # ===============================
 
-        audio_path = generate_speech(interviewer_text_local, user_lang)
+        try:
+            audio_path = generate_speech(interviewer_text_local, user_lang)
 
-        with open(audio_path, "rb") as f:
-            audio_base64 = base64.b64encode(f.read()).decode()
+            with open(audio_path, "rb") as f:
+                audio_base64 = base64.b64encode(f.read()).decode()
 
-        # ===============================
-        # 🔥 TRAINING RECOMMENDATION (NEW)
-        # ===============================
-
-        training_plan = generate_training_recommendations(user_data)
+        except Exception as e:
+            print("⚠️ TTS FAILED:", e)
+            audio_base64 = None
 
         if os.path.exists(temp_input_path):
             os.remove(temp_input_path)
@@ -231,8 +234,7 @@ async def process_voice_assessment(
         return JSONResponse({
             "interviewer_text": interviewer_text_local,
             "feedback": feedback_local,
-            "audio": audio_base64,
-            "training_plan": training_plan   # 🔥 NEW FIELD
+            "audio": audio_base64
         })
 
     except Exception as exc:
