@@ -9,7 +9,7 @@ import base64
 from AI_Service.src.stt.transcriber import transcribe_audio
 
 #  TTS 
-from services.tts_service import generate_speech
+from AI_Service.src.tts.generator import generate_speech
 
 router = APIRouter(prefix="/api/audio", tags=["Audio"])
 

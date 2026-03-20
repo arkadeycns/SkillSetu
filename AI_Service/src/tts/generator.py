@@ -51,3 +51,8 @@ def generate_audio_response(text, language_code, output_filename="data/response.
         tts.save(output_filename)
 
         return output_filename
+
+
+def generate_speech(text: str, language_code: str = "en", output_filename: str = "data/response.mp3") -> str:
+    """Compatibility wrapper for callers expecting generate_speech."""
+    return generate_audio_response(text=text, language_code=language_code, output_filename=output_filename)

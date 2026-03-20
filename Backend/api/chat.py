@@ -5,9 +5,9 @@ import time
 import base64
 
 from services.data_provider import get_user_resume_data
-from services.ai_engine import generate_chat_response, generate_greeting
+from AI_Service.src.engine.ai_engine import generate_chat_response, generate_greeting
 from AI_Service.src.stt.transcriber import transcribe_audio
-from services.tts_service import generate_speech
+from AI_Service.src.tts.generator import generate_speech
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 

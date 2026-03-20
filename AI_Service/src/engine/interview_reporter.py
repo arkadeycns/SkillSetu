@@ -17,6 +17,32 @@ MODEL_CANDIDATES = [
     "llama-3.3-70b-versatile",
 ]
 
+ABUSE_PATTERNS = [
+    r"\b(?:fuck|f\*+k|bc|mc|chutiya|madarchod|bhosdike|gaand|randi|harami|bastard|idiot|stupid)\b",
+]
+
+TECH_SIGNAL_PATTERNS = [
+    r"\bsafety\b",
+    r"\bppe\b",
+    r"\binspect\b",
+    r"\bverify\b",
+    r"\btool\b",
+    r"\bsequence\b",
+    r"\bprocedure\b",
+    r"\bmeasurement\b",
+    r"\bdiagnos\w*\b",
+    r"\bmaintenance\b",
+]
+
+GENERIC_STRENGTH_PATTERNS = [
+    r"\bwillingness\b",
+    r"\battitude\b",
+    r"\bmotiv\w*\b",
+    r"\bengaged\b",
+    r"\btried\b",
+    r"\bgood effort\b",
+]
+
 
 def _parse_json_payload(raw_text: str) -> dict[str, Any]:
     try:
@@ -39,6 +65,37 @@ def _normalize_list(value: Any, max_items: int = 6) -> list[str]:
 def _contains_any(text: str, patterns: list[str]) -> bool:
     lowered = (text or "").lower()
     return any(re.search(pattern, lowered) for pattern in patterns)
+
+
+def _abusive_count(history: list[dict[str, Any]]) -> int:
+    count = 0
+    for item in history:
+        answer = str(item.get("answer_en") or "").lower()
+        if any(re.search(pattern, answer) for pattern in ABUSE_PATTERNS):
+            count += 1
+    return count
+
+
+def _filter_technical_strengths(strengths: list[str], history: list[dict[str, Any]]) -> list[str]:
+    if not strengths:
+        return []
+
+    history_blob = " ".join(str(item.get("answer_en") or "") for item in history).lower()
+    filtered: list[str] = []
+    for strength in strengths:
+        text = (strength or "").strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if any(re.search(pattern, lowered) for pattern in GENERIC_STRENGTH_PATTERNS):
+            continue
+        if not any(re.search(pattern, lowered) for pattern in TECH_SIGNAL_PATTERNS):
+            continue
+        # Require at least one technical cue also present in the answer history.
+        if not any(re.search(pattern, history_blob) for pattern in TECH_SIGNAL_PATTERNS):
+            continue
+        filtered.append(text)
+    return list(dict.fromkeys(filtered))[:6]
 
 
 def _force_second_person(text: str) -> str:
@@ -85,10 +142,11 @@ def _heuristic_report(history: list[dict[str, Any]]) -> dict[str, Any]:
         if _contains_any(answer, [r"\bfirst\b", r"\bthen\b", r"\bafter\b", r"\bfinally\b"])
     )
     vague_count = sum(1 for answer in answers if len(answer.split()) < 6)
+    abusive_count = _abusive_count(history)
 
     completion_factor = min(1.0, total_turns / 8)
     base = 38 + int(avg_words * 1.6) + (safety_hits * 3) + (step_hits * 2) + int(completion_factor * 18)
-    score = max(15, min(94, base - vague_count * 6))
+    score = max(0, min(94, base - vague_count * 6 - abusive_count * 18))
     result = "PASS" if score >= 60 else "FAIL"
 
     strengths: list[str] = []
@@ -98,13 +156,16 @@ def _heuristic_report(history: list[dict[str, Any]]) -> dict[str, Any]:
         strengths.append("You attempted to explain work steps in sequence.")
     if avg_words >= 10:
         strengths.append("You provided reasonably detailed answers in multiple turns.")
-    if not strengths:
-        strengths.append("You stayed engaged and attempted to answer the interview questions.")
+    strengths = _filter_technical_strengths(strengths, history)
 
     improvements = [
         "Use concrete procedural steps instead of short generic replies.",
         "State safety checks explicitly before and after the task.",
     ]
+
+    if abusive_count > 0:
+        improvements.insert(0, "Use respectful professional language; abusive words are unacceptable in assessment.")
+        result = "FAIL"
 
     if result == "PASS":
         summary = f"Interview completed with practical understanding visible in multiple answers. Overall score: {score}/100."
@@ -232,12 +293,21 @@ Interview History:
             feedback = _force_second_person(str(payload.get("feedback", "")).strip() or summary)
 
             strengths = _normalize_list(payload.get("strengths"))
+            strengths = _filter_technical_strengths(strengths, history)
             if not strengths:
-                strengths = _heuristic_report(history).get("strengths", [])
+                strengths = _filter_technical_strengths(_heuristic_report(history).get("strengths", []), history)
 
             improvements = _normalize_list(payload.get("improvements"))
             if not improvements:
                 improvements = _heuristic_report(history).get("improvements", [])
+
+            abusive_count = _abusive_count(history)
+            if abusive_count > 0:
+                if "Use respectful professional language; abusive words are unacceptable in assessment." not in improvements:
+                    improvements.insert(0, "Use respectful professional language; abusive words are unacceptable in assessment.")
+                if completion_ratio >= 1.0:
+                    result = "FAIL"
+                score = max(0, score - abusive_count * 18)
 
             return {
                 "overall_score": score,

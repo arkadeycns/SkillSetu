@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from services.data_provider import get_user_resume_data
-from services.ai_engine import generate_training_recommendations
+from AI_Service.src.engine.ai_engine import generate_training_recommendations
 
 router = APIRouter(prefix="/api/training", tags=["Training"])
 

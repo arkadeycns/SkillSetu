@@ -48,6 +48,29 @@ TRADE_SKILL_KEYWORDS = [
     "ppe",
 ]
 
+FORMAL_EDUCATION_MARKERS = [
+    "iti",
+    "diploma",
+    "certificate",
+    "certification",
+    "apprenticeship",
+    "ncvt",
+    "scvt",
+    "b.tech",
+    "polytechnic",
+]
+
+INFORMAL_EXPERIENCE_MARKERS = [
+    "helper",
+    "site work",
+    "daily wage",
+    "on-site",
+    "contract work",
+    "hands-on",
+    "field work",
+    "worked with",
+]
+
 
 def _safe_text(value: Any) -> str:
     return str(value or "").strip()
@@ -114,6 +137,26 @@ def _normalize_list(value: Any, max_items: int = 12) -> list[str]:
     return list(dict.fromkeys(items))[:max_items]
 
 
+def _infer_candidate_track(text: str, data: dict[str, Any] | None = None) -> dict[str, str]:
+    source = f"{text}\n{json.dumps(data or {}, ensure_ascii=True)}".lower()
+
+    formal_hits = sum(1 for token in FORMAL_EDUCATION_MARKERS if token in source)
+    informal_hits = sum(1 for token in INFORMAL_EXPERIENCE_MARKERS if token in source)
+
+    if formal_hits >= max(1, informal_hits):
+        return {
+            "candidate_track": "skilled_professional",
+            "recommended_interaction_mode": "text_or_voice",
+            "documentation_signal": "has_formal_docs",
+        }
+
+    return {
+        "candidate_track": "informal_experience_led",
+        "recommended_interaction_mode": "voice_first",
+        "documentation_signal": "limited_formal_docs",
+    }
+
+
 def _heuristic_parse(text: str) -> dict[str, Any]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     name = lines[0] if lines else None
@@ -122,6 +165,7 @@ def _heuristic_parse(text: str) -> dict[str, Any]:
 
     skills = extract_skills(text)
     experience_level = _estimate_experience_level(text)
+    track_meta = _infer_candidate_track(text)
 
     return {
         "name": name,
@@ -155,6 +199,9 @@ def _heuristic_parse(text: str) -> dict[str, Any]:
             "risk_flags": ["Incomplete structured resume details"],
             "next_best_roles": [],
         },
+        "candidate_track": track_meta["candidate_track"],
+        "recommended_interaction_mode": track_meta["recommended_interaction_mode"],
+        "documentation_signal": track_meta["documentation_signal"],
         "analysis_source": "rule_based_fallback",
         "parse_warning": None,
     }
@@ -190,6 +237,9 @@ Return STRICT JSON only (no markdown) with this schema:
   "strengths": ["string"],
   "gaps": ["string"],
   "recommended_training": ["string"],
+    "candidate_track": "skilled_professional | informal_experience_led",
+    "recommended_interaction_mode": "text_or_voice | voice_first",
+    "documentation_signal": "has_formal_docs | limited_formal_docs",
   "blue_collar_report": {
     "fitment_summary": "string",
     "suitability_score": "integer 0-100",
@@ -202,6 +252,8 @@ Guidelines:
 - Prioritize trades: electrician, welder, fitter, plumber, machine operator, technician, warehouse roles.
 - Infer only when strongly implied by evidence.
 - Keep items concise and practical for recruiters.
+- For workers with ITI/diploma/certification signals, use candidate_track=skilled_professional.
+- For workers with mostly practical experience and weak formal docs, use candidate_track=informal_experience_led and voice_first.
 """.strip()
 
     user_prompt = f"Resume text:\n{text[:16000]}"
@@ -250,6 +302,8 @@ def _normalize_output(data: dict[str, Any], text: str) -> dict[str, Any]:
     if not re.match(r"^\d{1,3}%$", confidence):
         confidence = "65%"
 
+    track_meta = _infer_candidate_track(text, data)
+
     normalized = {
         "name": _safe_text(data.get("name")) or None,
         "email": _safe_text(data.get("email")) or fallback_email,
@@ -277,6 +331,11 @@ def _normalize_output(data: dict[str, Any], text: str) -> dict[str, Any]:
             "risk_flags": _normalize_list(blue_report.get("risk_flags"), max_items=6),
             "next_best_roles": _normalize_list(blue_report.get("next_best_roles"), max_items=6),
         },
+        "candidate_track": _safe_text(data.get("candidate_track")) or track_meta["candidate_track"],
+        "recommended_interaction_mode": _safe_text(data.get("recommended_interaction_mode"))
+        or track_meta["recommended_interaction_mode"],
+        "documentation_signal": _safe_text(data.get("documentation_signal"))
+        or track_meta["documentation_signal"],
         "analysis_source": _safe_text(data.get("analysis_source")) or "ai",
         "parse_warning": data.get("parse_warning"),
     }

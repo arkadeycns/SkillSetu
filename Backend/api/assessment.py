@@ -4,6 +4,7 @@ import os
 import shutil
 import time
 import base64
+from typing import List
 
 # Interview engine
 from AI_Service.src.engine.interview_manager import InterviewManager
@@ -16,11 +17,10 @@ from AI_Service.src.engine.translator import translate_to_english, translate_to_
 # AI modules
 from AI_Service.src.stt.transcriber import transcribe_audio
 from AI_Service.src.rag.qa import rag_query
-from services.tts_service import generate_speech
+from AI_Service.src.tts.generator import generate_speech
+from AI_Service.src.engine.ai_engine import generate_training_recommendations
 
-# 🔥 YOUR SERVICES
 from services.data_provider import get_user_resume_data
-# ❌ REMOVED: generate_training_recommendations (not needed here)
 
 router = APIRouter(prefix="/api/assessment", tags=["Assessment"])
 
@@ -28,6 +28,31 @@ manager = InterviewManager()
 
 TEMP_DIR = "temp_data"
 os.makedirs(TEMP_DIR, exist_ok=True)
+
+
+def _expected_skills_for_category(category_id: str, user_data: dict) -> List[str]:
+    """Return trade-specific baseline skills using selected assessment category."""
+    category_lookup = {
+        item.get("id", "").lower(): item.get("title", "").lower()
+        for item in list_categories()
+    }
+    title = category_lookup.get((category_id or "").lower(), "")
+    text = f"{(category_id or '').lower()} {title}".strip()
+
+    if any(key in text for key in ["electric", "wire"]):
+        return ["wiring", "circuit safety", "fault diagnosis", "tool handling"]
+    if any(key in text for key in ["carpent", "wood"]):
+        return ["measurement", "cutting", "joinery", "tool safety"]
+    if any(key in text for key in ["plumb", "pipe"]):
+        return ["pipe fitting", "leak diagnosis", "joint sealing", "safety"]
+    if any(key in text for key in ["mechanic", "automotive", "engine"]):
+        return ["inspection", "troubleshooting", "preventive maintenance", "tool safety"]
+    if any(key in text for key in ["mern", "developer", "software", "frontend", "backend"]):
+        return ["problem solving", "api usage", "debugging", "version control"]
+
+    # Fallback: use available user skills to avoid unrelated domain assumptions.
+    user_skills = [str(skill).strip() for skill in user_data.get("skills", []) if str(skill).strip()]
+    return user_skills if user_skills else ["core trade fundamentals"]
 
 
 # ==========================================================
@@ -120,9 +145,10 @@ async def process_voice_assessment(
 
         user_data = get_user_resume_data(user_id=session.session_id)
 
-        skills = user_data.get("skills", [])
-        expected_skills = ["Arrays", "Strings", "Graphs", "DP", "OS", "DBMS"]
-        weaknesses = [s for s in expected_skills if s not in skills]
+        skills = [str(skill).strip() for skill in user_data.get("skills", []) if str(skill).strip()]
+        expected_skills = _expected_skills_for_category(session.category_id, user_data)
+        known_skill_set = {skill.lower() for skill in skills}
+        weaknesses = [s for s in expected_skills if s.lower() not in known_skill_set]
 
         # ===============================
         # RAG FEEDBACK
@@ -200,8 +226,13 @@ async def process_voice_assessment(
 
         next_prompt = manager.get_current_prompt(session)
 
+        training_plan = None
         if next_prompt["stage"] == "completed":
             interviewer_text_en = "Assessment complete. Tap End to view your final report."
+            try:
+                training_plan = generate_training_recommendations(user_data).get("modules", [])
+            except Exception:
+                training_plan = []
         else:
             feedback_en = ai_feedback_en or outcome.get("feedback", "")
             next_q = next_prompt["question"]
@@ -234,7 +265,8 @@ async def process_voice_assessment(
         return JSONResponse({
             "interviewer_text": interviewer_text_local,
             "feedback": feedback_local,
-            "audio": audio_base64
+            "audio": audio_base64,
+            "training_plan": training_plan,
         })
 
     except Exception as exc:

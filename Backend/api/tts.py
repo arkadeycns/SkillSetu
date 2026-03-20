@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from schemas.tts_schemas import TTSRequest
-from services.tts_service import generate_speech
+from AI_Service.src.tts.generator import generate_speech
 
 router = APIRouter(prefix="/api/v1")
 
