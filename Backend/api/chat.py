@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
 # In-memory session storage
 sessions = {}
+session_meta = {}
 
 TEMP_DIR = "temp_chat_audio"
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -28,6 +29,7 @@ async def chat(
     user_id: str = Form(None),
     resume_text: str = Form(None),
     audio: UploadFile = File(None),
+    skill: str = Form(None),
     language: str = Form("en")
 ):
     try:
@@ -59,8 +61,26 @@ async def chat(
             resume_text=resume_text
         )
 
+        selected_role = (
+            skill
+            or session_meta.get(session_id, {}).get("role")
+            or user_data.get("role")
+        )
+
+        if selected_role:
+            session_meta[session_id] = {
+                "role": selected_role,
+                "language": language,
+            }
+
         # The Text AI still gets the original language setting inside the engine if needed
-        reply = generate_chat_response(message, user_data, history)
+        reply = generate_chat_response(
+            message,
+            user_data,
+            history,
+            language=language,
+            selected_role=selected_role,
+        )
 
         history.append({
             "question": message,
@@ -100,6 +120,7 @@ async def start_chat(
     session_id: str = Form("default"),
     user_id: str = Form(None),
     resume_text: str = Form(None),
+    skill: str = Form(None),
     language: str = Form("en")
 ):
     try:
@@ -110,11 +131,19 @@ async def start_chat(
             resume_text=resume_text
         )
 
+        selected_role = skill or user_data.get("role")
+        if selected_role:
+            user_data = {**user_data, "role": selected_role}
+
         # The Text AI still gets "Hinglish" so it writes in mixed language
         greeting = generate_greeting(user_data, language)
 
         # reset session (no pollution)
         sessions[session_id] = []
+        session_meta[session_id] = {
+            "role": selected_role,
+            "language": language,
+        }
 
         audio_base64 = None
         try:

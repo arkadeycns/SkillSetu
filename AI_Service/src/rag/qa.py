@@ -47,6 +47,23 @@ def _chat_with_fallback(client: Groq, system_prompt: str, user_prompt: str) -> s
     raise ValueError("No chat model configured for RAG responses.")
 
 
+def _contains_devanagari(text: str) -> bool:
+    return bool(re.search(r"[\u0900-\u097F]", text or ""))
+
+
+def _to_romanized_hindi(client: Groq, text: str) -> str:
+    prompt = (
+        "Rewrite the following text in natural Hinglish using ONLY Latin characters. "
+        "Do not use Devanagari script. Keep meaning same and concise.\n\n"
+        f"Text: {text}"
+    )
+    return _chat_with_fallback(
+        client,
+        "You convert Hindi text to Romanized Hinglish only.",
+        prompt,
+    )
+
+
 def rag_query(question: str, user_answer: str, chat_history=None) -> str:
     """Return concise coaching feedback for one answer."""
 
@@ -93,7 +110,13 @@ Learner answer:
     raise RuntimeError("Groq returned empty QA feedback.")
 
 
-def career_chat_query(user_message: str, user_context: str, chat_history=None) -> str:
+def career_chat_query(
+    user_message: str,
+    user_context: str,
+    chat_history=None,
+    language: str = "en",
+    selected_role: str | None = None,
+) -> str:
     """Return practical chat guidance without interview-evaluation behavior."""
 
     if not GROQ_API_KEY:
@@ -109,6 +132,12 @@ def career_chat_query(user_message: str, user_context: str, chat_history=None) -
     for item in (chat_history or []):
         history_text += f"User: {item.get('question', '')}\nAssistant: {item.get('answer_en', '')}\n"
 
+    role_hint = (selected_role or "").strip() or "blue-collar trade"
+    lang = (language or "en").strip().lower()
+    language_rule = "Reply in English."
+    if lang in {"hi", "hindi", "hinglish", "hi-in"}:
+        language_rule = "Reply in natural Hinglish using ONLY Latin script (Roman Hindi). Never use Devanagari."
+
     system_prompt = f"""
 You are a blue-collar career assistant.
 Rules:
@@ -118,6 +147,10 @@ Rules:
 - Never invent that the user answered a specific trade question unless explicitly present.
 - If message is only mic test/noise, acknowledge and ask a clear follow-up question.
 - If user is abusive, set a firm respectful boundary and continue only if respectful language is used.
+- Keep guidance specific to user's selected role/trade: {role_hint}.
+- Mention at least one relevant trade step/tool/check where applicable.
+- Avoid generic motivational lines unless user explicitly asks.
+- {language_rule}
 
 SOP context:
 {sop_context}
@@ -134,8 +167,13 @@ Current user message:
 {user_message}
 """.strip()
 
-    reply = _chat_with_fallback(Groq(api_key=GROQ_API_KEY), system_prompt, user_prompt)
+    client = Groq(api_key=GROQ_API_KEY)
+    reply = _chat_with_fallback(client, system_prompt, user_prompt)
     reply = re.sub(r"\s+", " ", (reply or "")).strip()
+
+    if lang in {"hi", "hindi", "hinglish", "hi-in"} and _contains_devanagari(reply):
+        reply = re.sub(r"\s+", " ", _to_romanized_hindi(client, reply)).strip()
+
     if reply:
         return reply
 

@@ -38,6 +38,50 @@ def _is_mic_test_or_nonsense(text: str) -> bool:
     return False
 
 
+def _language_pref(language: str | None) -> str:
+    lang = (language or "en").strip().lower()
+    if lang in {"hindi", "hi-in", "hi", "hinglish"}:
+        return "hinglish"
+    return "en"
+
+
+def _fallback_chat_reply(kind: str, language: str, role: str) -> str:
+    pref = _language_pref(language)
+    role_text = role.replace("_", " ").strip() if role else "trade"
+
+    if kind == "abuse":
+        if pref == "hinglish":
+            return (
+                "Please gaali mat do. Main aapki job guidance, training aur interview prep mein madad karunga, "
+                "bas respectful language use karein."
+            )
+        return (
+            "Please avoid abusive language. I can help with job guidance, training, and interview preparation "
+            "once we keep the conversation respectful."
+        )
+
+    if kind == "nonsense":
+        if pref == "hinglish":
+            return (
+                f"Mic check mil gaya, audio theek lag raha hai. Ab {role_text} ka practical sawaal poochiye, "
+                "jaise tools, safety ya next skill steps."
+            )
+        return (
+            f"Mic check received. Audio seems fine. Please ask a practical {role_text} question, "
+            "for example tools, safety checks, or next training steps."
+        )
+
+    if pref == "hinglish":
+        return (
+            f"Main aapko {role_text} role ke liye step-by-step guidance de sakta hoon. "
+            "Ek practical problem bataiye jise aap abhi improve karna chahte hain."
+        )
+    return (
+        f"I can guide you step by step for the {role_text} role. "
+        "Tell me one practical problem you want to improve right now."
+    )
+
+
 def _safe_list(value: Any) -> List[str]:
     if isinstance(value, list):
         return [str(item).strip() for item in value if str(item).strip()]
@@ -116,31 +160,34 @@ def _build_user_snapshot(user_data: Dict[str, Any]) -> str:
     )
 
 
-def generate_chat_response(message: str, user_data: Dict[str, Any], history: List[Dict[str, str]]) -> str:
+def generate_chat_response(
+    message: str,
+    user_data: Dict[str, Any],
+    history: List[Dict[str, str]],
+    language: str = "en",
+    selected_role: str | None = None,
+) -> str:
     """Return concise career guidance for one chat turn."""
 
     context = _build_user_snapshot(user_data)
-    history_text = "\n".join(
-        f"Q: {item.get('question', '')}\nA: {item.get('answer_en', '')}"
-        for item in (history or [])[-5:]
-    )
+    role = str(selected_role or user_data.get("role") or "blue-collar trade")
 
     if _is_abusive(message):
-        return (
-            "Please avoid abusive language. I can help with job guidance, training, and interview preparation "
-            "once we keep the conversation respectful."
-        )
+        return _fallback_chat_reply("abuse", language, role)
 
     if _is_mic_test_or_nonsense(message):
-        return (
-            "Mic check received. Audio seems fine. Please ask your work question, for example: "
-            "how to improve safety, tools, or next training steps in your trade."
-        )
+        return _fallback_chat_reply("nonsense", language, role)
 
     try:
-        return career_chat_query(user_message=message, user_context=context, chat_history=history or [])
+        return career_chat_query(
+            user_message=message,
+            user_context=context,
+            chat_history=history or [],
+            language=language,
+            selected_role=role,
+        )
     except Exception:
-        return "I can help you plan your next steps. Start with one practical skill practice task this week."
+        return _fallback_chat_reply("error", language, role)
 
 
 def generate_greeting(user_data: Dict[str, Any], language: str = "en") -> str:
@@ -153,9 +200,15 @@ def generate_greeting(user_data: Dict[str, Any], language: str = "en") -> str:
     )
 
     try:
-        return career_chat_query(user_message=prompt, user_context=context, chat_history=[])
+        return career_chat_query(
+            user_message=prompt,
+            user_context=context,
+            chat_history=[],
+            language=language,
+            selected_role=str(user_data.get("role", "blue-collar trade")),
+        )
     except Exception:
-        return "Welcome! I am here to guide your training journey step by step."
+        return _fallback_chat_reply("error", language, str(user_data.get("role", "blue-collar trade")))
 
 
 def _extract_json_array(raw_text: str, language: str = "en") -> List[Dict[str, Any]]:
