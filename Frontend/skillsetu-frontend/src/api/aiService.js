@@ -174,3 +174,38 @@ export const getTrainingRecommendations = async (sessionId) => {
     return null;
   }
 };
+
+// ------------------------------------------------------------------
+// 6. AI GUIDANCE CHAT (Voice + Text)
+// ------------------------------------------------------------------
+export const sendAudioToGuidanceChat = async (audioBlob, sessionId) => {
+  const CHAT_ENDPOINT = `${(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')}/api/chat`;
+  
+  const formData = new FormData();
+  const extension = audioBlob?.type?.includes("mp4") ? "m4a" : "webm";
+  
+  formData.append("audio", audioBlob, `chat_audio.${extension}`);
+  formData.append("session_id", sessionId);
+
+  try {
+    const response = await fetch(CHAT_ENDPOINT, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) throw new Error("Failed to connect to AI Guide");
+
+    const data = await response.json();
+    
+    const aiAudioUrl = data.audio ? `data:audio/mpeg;base64,${data.audio}` : null;
+
+    return { 
+      text: data.reply,
+      audioUrl: aiAudioUrl
+    };
+
+  } catch (error) {
+    console.error("Chat API Error:", error);
+    return { error: "Failed to connect to AI Guide." };
+  }
+};

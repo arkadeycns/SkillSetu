@@ -1,10 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../layout/Layout";
-import { Zap, Wrench, Hammer, Flame, ArrowRight, Sparkles, Loader2 } from "lucide-react";
-import { startInterviewSession } from "../api/aiService";
+import { Zap, Wrench, Hammer, Flame, ArrowRight, Bot, Loader2 } from "lucide-react";
 
-export default function ChooseSkill() {
+export default function ChooseCoach() {
   const navigate = useNavigate();
   const [selectedSkill, setSelectedSkill] = useState(null);
   const [language, setLanguage] = useState("Hindi"); 
@@ -27,42 +26,35 @@ export default function ChooseSkill() {
     { id: "Bengali", label: "বাংলা" },
   ];
 
-  const handleStartAssessment = async () => {
+  const handleStartCoaching = () => {
     if (!selectedSkill) return;
 
     setIsInitializing(true);
-    try {
-      const response = await startInterviewSession(selectedSkill.id, language);
-      
-      navigate("/interview", { 
+    
+    setTimeout(() => {
+      navigate("/guidance-chat", { 
         state: { 
-          skill: selectedSkill.name,
+          skill: selectedSkill.name, 
           lang: language,
-          sessionId: response.sessionId,
-          initialQuestion: response.initialQuestionText,
-          initialAudioUrl: response.initialAudioUrl 
+          sessionId: `coach_${Date.now()}` 
         } 
       });
-    } catch (error) {
-      alert("Failed to connect to the AI Mentor. Please check your backend.");
-    } finally {
-      setIsInitializing(false);
-    }
+    }, 1200);
   };
 
   return (
     <Layout>
-      <div className="w-[100vw] relative left-[50%] right-[50%] -ml-[50vw] -mr-[50vw] mt-[-4rem] mb-[-4rem] min-h-[calc(100vh-80px)] bg-slate-900 flex flex-col items-center justify-center py-6 px-6 font-sans overflow-x-hidden">
+      <div className="w-[100vw] relative left-[50%] right-[50%] -ml-[50vw] -mr-[50vw] mt-[-4rem] mb-[-4rem] min-h-screen bg-slate-900 flex flex-col items-center justify-center py-12 px-6 font-sans overflow-x-hidden">
         
-        <div className="w-full max-w-3xl text-center mb-6 animate-fade-in-up mt-6">
-          <div className="inline-block p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl mb-3">
-            <Sparkles className="text-yellow-500" size={24} />
+        <div className="w-full max-w-3xl text-center mb-6 animate-fade-in-up mt-8">
+          <div className="inline-block p-2.5 bg-blue-600/10 border border-blue-500/20 rounded-2xl mb-3">
+            <Bot className="text-blue-400" size={28} />
           </div>
           <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight mb-3">
-            Verify Your <span className="text-yellow-500">Expertise</span>
+            Meet Your <span className="text-blue-500">AI Career Coach</span>
           </h1>
           <p className="text-slate-400 text-base md:text-lg">
-            Select your trade and preferred language to begin.
+            Select your trade and preferred language to start building your upskilling roadmap.
           </p>
         </div>
 
@@ -73,7 +65,7 @@ export default function ChooseSkill() {
               onClick={() => setLanguage(l.id)}
               className={`py-2 rounded-xl font-bold transition-all text-sm ${
                 language === l.id 
-                  ? "bg-yellow-500 text-slate-900 shadow-[0_0_15px_rgba(234,179,8,0.4)]" 
+                  ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]" 
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
               }`}
             >
@@ -86,10 +78,10 @@ export default function ChooseSkill() {
           {skills.map((skill) => (
             <button
               key={skill.name}
-              onClick={() => setSelectedSkill(skill)}
+              onClick={() => setSelectedSkill(skill)} 
               className={`flex flex-col items-center justify-center p-4 rounded-3xl border-2 transition-all duration-300 ${
-                selectedSkill?.name === skill.name
-                  ? "border-yellow-500 bg-yellow-500/10 text-yellow-500 scale-105 shadow-[0_0_20px_rgba(234,179,8,0.2)]"
+                selectedSkill?.name === skill.name 
+                  ? "border-blue-500 bg-blue-600/10 text-blue-400 scale-105 shadow-[0_0_20px_rgba(37,99,235,0.2)]"
                   : "border-slate-800 bg-slate-800/40 text-slate-500 hover:border-slate-600 hover:bg-slate-800"
               }`}
             >
@@ -101,24 +93,24 @@ export default function ChooseSkill() {
 
         <div className="w-full max-w-xs">
           <button
-            onClick={handleStartAssessment}
+            onClick={handleStartCoaching}
             disabled={!selectedSkill || isInitializing}
             className={`w-full flex items-center justify-center gap-3 p-4 rounded-2xl font-black text-lg transition-all duration-300 ${
               isInitializing
-                ? "bg-slate-700 text-yellow-500 cursor-wait border border-slate-600"
+                ? "bg-slate-700 text-blue-400 cursor-wait border border-slate-600"
                 : selectedSkill
-                  ? "bg-yellow-500 hover:bg-yellow-400 text-slate-900 shadow-[0_10px_30px_rgba(234,179,8,0.3)] hover:-translate-y-1 active:scale-95"
+                  ? "bg-blue-600 hover:bg-blue-500 text-white shadow-[0_10px_30px_rgba(37,99,235,0.3)] hover:-translate-y-1 active:scale-95"
                   : "bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700"
             }`}
           >
             {isInitializing ? (
               <>
                 <Loader2 size={24} className="animate-spin" />
-                <span>Waking AI...</span>
+                <span>Waking Coach...</span>
               </>
             ) : (
               <>
-                {selectedSkill ? `Start Assessment` : "Select a Trade"}
+                {selectedSkill ? `Start Mentorship` : "Select a Trade"}
                 <ArrowRight size={24} />
               </>
             )}

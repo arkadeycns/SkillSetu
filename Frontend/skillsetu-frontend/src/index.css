@@ -4,3 +4,7 @@ body{
   margin:0;
   font-family: system-ui, sans-serif;
 }
+
+body, html {
+  background-color: #0f172a; /* This is Tailwind's slate-900 */
+}

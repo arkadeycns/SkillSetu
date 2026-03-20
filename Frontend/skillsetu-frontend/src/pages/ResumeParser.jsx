@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { parseResume } from "../api/aiService";
+import { parseResume, getTrainingRecommendations } from "../api/aiService";
+import { BookOpen, Bot, Loader2 } from "lucide-react";
 
 export const ResumeParser = () => {
   const navigate = useNavigate();
@@ -9,6 +10,12 @@ export const ResumeParser = () => {
   const [isParsing, setIsParsing] = useState(false);
   const [parseStep, setParseStep] = useState("");
   const [parsedResult, setParsedResult] = useState(null);
+  
+  // State for the professional roadmap
+  const [trainingPlan, setTrainingPlan] = useState(null);
+  const [isLoadingPlan, setIsLoadingPlan] = useState(false);
+  // We need a session ID to pass to the chat. If the backend doesn't return one, we generate a temp one.
+  const [sessionId, setSessionId] = useState("");
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -35,21 +42,22 @@ export const ResumeParser = () => {
     if (selectedFile) setFile(selectedFile);
   };
 
-  // --- THIS IS THE REAL API CALL NOW ---
   const handleParse = async () => {
     if (!file) return;
     
     setIsParsing(true);
     setParseStep("Extracting and analyzing document with AI...");
+    
+    // Generate a session ID for this professional user
+    const currentSessionId = `prof_${Date.now()}`;
+    setSessionId(currentSessionId);
 
     try {
       const result = await parseResume(file);
       
-      console.log("BACKEND DATA:", result); // Keep this so we can see what the backend actually sends!
-      
       setParsedResult({
         name: result.name || "Candidate Profile",
-        role: result.role || "General Skilled Worker",
+        role: result.role || "Professional",
         confidence: result.confidence || "N/A",
         skills: result.skills || [],
         experience: result.experience_level || "Experience Level Unknown",
@@ -57,12 +65,23 @@ export const ResumeParser = () => {
         score: result.blue_collar_report?.suitability_score || 0
       });
 
+      setParseStep("Generating custom upskilling roadmap...");
+      setIsLoadingPlan(true);
+      
+      // In a real app, you might need to pass the parsed text/skills to the backend first, 
+      // but assuming your backend can handle the user_id context:
+      const planData = await getTrainingRecommendations(currentSessionId);
+      if (planData && planData.recommendations) {
+        setTrainingPlan(planData.recommendations);
+      }
+
     } catch (error) {
       console.error("Resume parsing failed:", error);
       alert(error.message || "Failed to parse resume. Please check your backend.");
       setFile(null);
     } finally {
       setIsParsing(false);
+      setIsLoadingPlan(false);
     }
   };
 
@@ -87,12 +106,12 @@ export const ResumeParser = () => {
           AI Resume Intelligence
         </h1>
         <p className="text-slate-400 text-lg">
-          Upload your resume. Our NLP engine will extract your core competencies and benchmark them against industry standards.
+          Upload your resume. Our AI engine will extract your core competencies and benchmark them against industry standards.
         </p>
       </div>
 
       {/* Main Interface */}
-      <div className="w-full max-w-2xl bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-8 shadow-2xl animate-fade-in-up">
+      <div className="w-full max-w-3xl bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-8 shadow-2xl animate-fade-in-up">
         
         {/* State 1: Upload Zone */}
         {!isParsing && !parsedResult && (
@@ -144,9 +163,11 @@ export const ResumeParser = () => {
           </div>
         )}
 
-        {/* State 3: Parsed Results */}
+        {/* State 3: Parsed Results & Roadmap */}
         {parsedResult && !isParsing && (
-          <div className="space-y-6 animate-fade-in-up">
+          <div className="space-y-8 animate-fade-in-up">
+            
+            {/* Top Stats */}
             <div className="flex items-center justify-between border-b border-slate-700 pb-4">
               <div>
                 <h3 className="text-2xl font-bold text-white">{parsedResult.role}</h3>
@@ -158,12 +179,13 @@ export const ResumeParser = () => {
               </div>
             </div>
             
-            {/* New Fitment Summary Section */}
-            <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+            {/* Fitment Summary */}
+            <div className="bg-slate-900/50 p-5 rounded-xl border border-slate-700">
                <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">AI Fitment Summary</h4>
                <p className="text-slate-300 text-sm leading-relaxed">{parsedResult.summary}</p>
             </div>
 
+            {/* Extracted Skills */}
             <div>
               <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Extracted Skills</h4>
               <div className="flex flex-wrap gap-2">
@@ -178,31 +200,78 @@ export const ResumeParser = () => {
                 )}
               </div>
             </div>
+
+            {/* Professional Training Roadmap */}
+            <div className="bg-blue-600/10 border border-blue-500/20 p-6 rounded-2xl mt-8">
+              <h3 className="text-blue-400 text-xl font-bold flex items-center gap-2 mb-2">
+                <BookOpen size={24} /> Professional Upskilling Roadmap
+              </h3>
+              
+              {isLoadingPlan ? (
+                <div className="flex items-center gap-3 text-blue-400 p-4">
+                  <Loader2 className="animate-spin" size={20} />
+                  <span>Generating your custom corporate curriculum...</span>
+                </div>
+              ) : trainingPlan && trainingPlan.length > 0 ? (
+                <div className="mt-4 space-y-4">
+                  <p className="text-slate-400 text-sm mb-4">Based on your resume gaps, focus on these modules to increase your market value:</p>
+                  {trainingPlan.map((module, idx) => (
+                    <div key={idx} className="bg-slate-900/60 p-4 rounded-xl border border-slate-700">
+                      <div className="flex justify-between items-center mb-2">
+                        <h4 className="text-white font-bold text-lg">{module.title}</h4>
+                        <span className={`text-xs font-black uppercase tracking-wider px-2 py-1 rounded-md ${
+                          module.priority === 'High' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-500'
+                        }`}>
+                          {module.priority}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {module.plan.map((topic, tIdx) => (
+                          <span key={tIdx} className="bg-blue-600/20 border border-blue-500/30 text-blue-300 text-xs px-2 py-1 rounded-md">
+                            {topic}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-400 text-sm mt-2">Your profile is highly optimized. No critical skill gaps detected.</p>
+              )}
+            </div>
+
           </div>
         )}
 
         {/* Action Buttons */}
-        <div className="mt-8 pt-6 border-t border-slate-700 flex justify-end gap-4">
+        <div className="mt-8 pt-6 border-t border-slate-700 flex flex-col sm:flex-row justify-end gap-4">
           {parsedResult ? (
             <>
               <button 
-                onClick={() => { setParsedResult(null); setFile(null); }}
-                className="px-6 py-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
+                onClick={() => { setParsedResult(null); setFile(null); setTrainingPlan(null); }}
+                className="px-6 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-slate-700 transition-colors font-semibold"
               >
-                Scan Another
+                Scan Another Resume
               </button>
+              
               <button 
-                onClick={() => navigate('/chooseskill')} 
-                className="px-6 py-2 bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold rounded-md shadow-[0_0_10px_rgba(234,179,8,0.2)] transition-all hover:-translate-y-1"
+                onClick={() => navigate('/guidance-chat', { 
+                  state: { 
+                    sessionId: sessionId,
+                    skill: parsedResult.role
+                  } 
+                })} 
+                className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-xl shadow-[0_5px_20px_rgba(37,99,235,0.3)] transition-all flex items-center gap-2 hover:-translate-y-1"
               >
-                Start AI Interview →
+                <Bot size={20} />
+                Talk to AI Mentor
               </button>
             </>
           ) : (
             <button 
               onClick={handleParse}
               disabled={!file || isParsing}
-              className={`w-full px-6 py-3 font-bold rounded-md transition-all ${
+              className={`w-full px-6 py-4 font-black rounded-xl text-lg transition-all ${
                 !file || isParsing
                   ? "bg-slate-700 text-slate-500 cursor-not-allowed" 
                   : "bg-yellow-500 hover:bg-yellow-400 text-slate-900 shadow-[0_0_15px_rgba(234,179,8,0.3)] hover:-translate-y-1"

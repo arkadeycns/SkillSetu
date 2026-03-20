@@ -28,7 +28,6 @@ export default function Dashboard() {
   const passCount = workers.filter((w) => w.result === "PASS").length;
   const passRate = Math.round((passCount / totalWorkers) * 100);
 
-  // Premium Gold Palette for Charts
   const GOLD_COLORS = ["#eab308", "#facc15", "#fef08a", "#a16207"];
 
   return (

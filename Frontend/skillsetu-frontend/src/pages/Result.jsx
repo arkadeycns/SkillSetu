@@ -29,7 +29,7 @@ export default function Result() {
     fetchPlan();
   }, [sessionId]);
 
-  // Security check: If someone tries to visit /result directly without an interview, send them back
+  //If someone tries to visit /result directly without an interview, send them back
   if (!summary) {
     return <Navigate to="/chooseskill" replace />;
   }
@@ -116,7 +116,7 @@ export default function Result() {
               </div>
             )}
 
-            {/* 🔥 NEW: AI Training Roadmap */}
+            {/* AI Training Roadmap */}
             <div className="bg-blue-500/10 border border-blue-500/20 p-6 rounded-2xl">
               <h3 className="text-blue-400 text-xl font-bold flex items-center gap-2 mb-2">
                 <BookOpen size={24} /> Upskilling Roadmap
@@ -167,7 +167,7 @@ export default function Result() {
               Return Home
             </button>
             
-            {/* 🔥 NEW: Jump to Chat */}
+            {/* Jump to Chat */}
             <button
               onClick={() => navigate('/guidance-chat', { state: { sessionId } })}
               className="flex items-center justify-center gap-3 px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded-2xl font-black transition-all shadow-[0_10px_30px_rgba(234,179,8,0.2)] hover:-translate-y-1"

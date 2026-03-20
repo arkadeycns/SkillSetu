@@ -11,8 +11,10 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/DashBoard";
 import RegionalReports from "./pages/RegionalReports";
+import ChooseCoach from './pages/ChooseCoach';
+import GuidanceChat from './pages/GuidanceChat';
 
-// Import your publishable key
+
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 if (!PUBLISHABLE_KEY) {
@@ -35,6 +37,8 @@ function App() {
           <Route path="/wallet" element={<Wallet />} /> 
           <Route path="/regional-reports" element={<RegionalReports />} />
           <Route path="/result" element={<Result />} />
+          <Route path="/choose-coach" element={<ChooseCoach />} />
+          <Route path="/guidance-chat" element={<GuidanceChat />} />
         </Routes>
       </BrowserRouter>
     </ClerkProvider>
