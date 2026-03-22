@@ -14,4 +14,4 @@ db = client["skillset"]
 users_collection = db["users"]
 skills_collection = db["skills"]
  
-print("✅ MongoDB connected successfully")
+print(" MongoDB connected successfully")

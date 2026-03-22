@@ -1,7 +1,7 @@
 const API_BASE_URL = "http://127.0.0.1:8000";
 const ASSESS_VOICE_ENDPOINT = `${API_BASE_URL}/api/assessment/assess-voice`;
 const START_SESSION_ENDPOINT = `${API_BASE_URL}/api/assessment/start-session`;
-const RESUME_PARSE_ENDPOINT = `${API_BASE_URL}/api/v1/resume/parse`;
+const RESUME_PARSE_ENDPOINT = `${API_BASE_URL}/api/resume/parse`;
 
 // ------------------------------------------------------------------
 // 1. START SESSION (AI Interview)
@@ -126,7 +126,7 @@ export const parseResume = async (resumeFile) => {
   formData.append("resume", resumeFile);
 
   try {
-    const response = await fetch(RESUME_PARSE_ENDPOINT, {
+    const response = await fetch(`${API_BASE_URL}/api/resume/parse`, {
       method: "POST",
       body: formData,
     });

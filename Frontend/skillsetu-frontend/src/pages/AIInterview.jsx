@@ -3,13 +3,17 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Mic, Square, Loader2, User, Bot, Trash2, Send, ChevronLeft, Flag } from 'lucide-react'; 
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import { sendAudioToAI, getInterviewSummary } from '../api/aiService';
+import { useAuth, useUser } from "@clerk/clerk-react"; 
 
 export default function AIInterview() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { userId } = useAuth(); 
+  const { user } = useUser(); 
   
   const selectedSkill = location.state?.skill || "General Trade";
   const selectedLang = location.state?.lang || "Hindi";
+  const userLocation = location.state?.userState || "Maharashtra";
   const sessionId = location.state?.sessionId || "dev_session";
   const initialQuestion = location.state?.initialQuestion || "Welcome to the assessment.";
   const initialAudioUrl = location.state?.initialAudioUrl || null; 
@@ -71,7 +75,7 @@ export default function AIInterview() {
     }
   };
 
-  // --- HANDLE ENDING THE INTERVIEW ---
+  // --- HANDLE ENDING THE INTERVIEW & SAVING TO MONGODB --
   const handleEndInterview = async () => {
     if (isProcessing) return; 
 
@@ -82,21 +86,29 @@ export default function AIInterview() {
 
     try {
       const summaryData = await getInterviewSummary(sessionId);
-      await fetch("http://127.0.0.1:8000/api/assessment/save-result", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    user_id: "test_user_123",
-    skill: selectedSkill,
-    session_id: sessionId,
-    score: summaryData.score,
-    feedback: summaryData.feedback,
-    strengths: summaryData.strengths,
-    weaknesses: summaryData.improvements
-  })
-});
+      const finalScore = summaryData.score || summaryData.overall_score || 0;
+      const isPass = finalScore >= 70;
+
+      
+      if (userId) {
+        try {
+          await fetch("http://localhost:8000/api/user/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              clerk_id: userId,
+              user_name: user?.fullName || "Worker",
+              skill_name: selectedSkill,
+              score: finalScore,
+              result: isPass ? "PASS" : "FAIL",
+              state: userLocation, 
+              badges: isPass ? ["AI Verified", "Safety Cleared"] : ["Beginner"]
+            })
+          });
+        } catch (syncError) {
+           console.error("Failed to sync interview to DB:", syncError);
+        }
+      }
       
       if (summaryData) {
         navigate("/result", { 

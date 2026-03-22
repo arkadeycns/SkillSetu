@@ -1,13 +1,21 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../layout/Layout";
-import { Zap, Wrench, Hammer, Flame, ArrowRight, Sparkles, Loader2 } from "lucide-react";
+import { Zap, Wrench, Hammer, Flame, ArrowRight, Sparkles, Loader2, MapPin } from "lucide-react";
 import { startInterviewSession } from "../api/aiService";
+
+// 1. ADDED LIST OF STATES
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Bihar", "Delhi", "Gujarat", "Haryana", 
+  "Karnataka", "Kerala", "Maharashtra", "Punjab", "Rajasthan", 
+  "Tamil Nadu", "Telangana", "Uttar Pradesh", "West Bengal"
+];
 
 export default function ChooseSkill() {
   const navigate = useNavigate();
   const [selectedSkill, setSelectedSkill] = useState(null);
   const [language, setLanguage] = useState("Hindi"); 
+  const [userState, setUserState] = useState(""); 
   const [isInitializing, setIsInitializing] = useState(false);
 
   const skills = [
@@ -28,7 +36,7 @@ export default function ChooseSkill() {
   ];
 
   const handleStartAssessment = async () => {
-    if (!selectedSkill) return;
+    if (!selectedSkill || !userState) return; 
 
     setIsInitializing(true);
     try {
@@ -38,6 +46,7 @@ export default function ChooseSkill() {
         state: { 
           skill: selectedSkill.name,
           lang: language,
+          userState: userState, 
           sessionId: response.sessionId,
           initialQuestion: response.initialQuestionText,
           initialAudioUrl: response.initialAudioUrl 
@@ -62,10 +71,11 @@ export default function ChooseSkill() {
             Verify Your <span className="text-yellow-500">Expertise</span>
           </h1>
           <p className="text-slate-400 text-base md:text-lg">
-            Select your trade and preferred language to begin.
+            Select your trade, language, and location to begin.
           </p>
         </div>
 
+        {/* Language Selector */}
         <div className="w-full max-w-2xl mb-6 bg-slate-800 p-1.5 rounded-2xl border border-slate-700 grid grid-cols-3 md:grid-cols-6 gap-2 z-10 relative">
           {languages.map((l) => (
             <button
@@ -82,6 +92,7 @@ export default function ChooseSkill() {
           ))}
         </div>
 
+        {/* Skill Selector */}
         <div className="w-full max-w-4xl grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-8">
           {skills.map((skill) => (
             <button
@@ -99,14 +110,31 @@ export default function ChooseSkill() {
           ))}
         </div>
 
+        {/* 4. ADDED LOCATION DROPDOWN */}
+        <div className="w-full max-w-xs mb-6 relative">
+          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+            <MapPin size={20} className="text-slate-400" />
+          </div>
+          <select 
+            value={userState}
+            onChange={(e) => setUserState(e.target.value)}
+            className="w-full bg-slate-800 border border-slate-700 text-slate-200 pl-12 pr-4 py-4 rounded-2xl appearance-none focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-all font-semibold"
+          >
+            <option value="" disabled>Select your State...</option>
+            {INDIAN_STATES.map(state => (
+              <option key={state} value={state}>{state}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="w-full max-w-xs">
           <button
             onClick={handleStartAssessment}
-            disabled={!selectedSkill || isInitializing}
+            disabled={!selectedSkill || !userState || isInitializing}
             className={`w-full flex items-center justify-center gap-3 p-4 rounded-2xl font-black text-lg transition-all duration-300 ${
               isInitializing
                 ? "bg-slate-700 text-yellow-500 cursor-wait border border-slate-600"
-                : selectedSkill
+                : (selectedSkill && userState)
                   ? "bg-yellow-500 hover:bg-yellow-400 text-slate-900 shadow-[0_10px_30px_rgba(234,179,8,0.3)] hover:-translate-y-1 active:scale-95"
                   : "bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700"
             }`}
@@ -118,7 +146,7 @@ export default function ChooseSkill() {
               </>
             ) : (
               <>
-                {selectedSkill ? `Start Assessment` : "Select a Trade"}
+                {(selectedSkill && userState) ? `Start Assessment` : "Complete Selections"}
                 <ArrowRight size={24} />
               </>
             )}

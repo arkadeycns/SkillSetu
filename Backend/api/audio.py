@@ -33,7 +33,7 @@ async def process_audio(
     temp_input_path = f"{TEMP_DIR}/audio_{int(time.time())}_{audio.filename}"
 
     try:
-        # 💾 Save uploaded file
+        
         with open(temp_input_path, "wb") as buffer:
             shutil.copyfileobj(audio.file, buffer)
 
@@ -43,7 +43,7 @@ async def process_audio(
         user_text = transcribe_audio(temp_input_path, language=language)
 
         # ===============================
-        # 🔊 TEXT TO SPEECH (echo back)
+        #  TEXT TO SPEECH (echo back)
         # ===============================
         audio_base64 = None
         try:
@@ -53,7 +53,7 @@ async def process_audio(
                 audio_base64 = base64.b64encode(f.read()).decode()
 
         except Exception as e:
-            print("⚠️ TTS FAILED:", e)
+            print("TTS FAILED:", e)
 
         # ===============================
         #  CLEANUP

@@ -21,9 +21,9 @@ from AI_Service.src.tts.generator import generate_speech
 from AI_Service.src.engine.ai_engine import generate_training_recommendations
 
 from services.data_provider import get_user_resume_data
-from services.db import skills_collection   # ✅ ADDED
+from services.db import skills_collection   
 
-router = APIRouter(prefix="/api/assessment", tags=["Assessment"])
+router = APIRouter(tags=["Assessment"])
 
 manager = InterviewManager()
 
@@ -106,9 +106,7 @@ async def process_voice_assessment(
 
         user_lang = session.language
 
-        # =========================
         # SPEECH → TEXT
-        # =========================
         user_text = transcribe_audio(temp_input_path, language="en")
 
         english_user_text = (
@@ -116,9 +114,7 @@ async def process_voice_assessment(
             else translate_to_english(user_text, user_lang)
         )
 
-        # =========================
         # DECISION
-        # =========================
         chat_history = [
             {"question": t.question_text, "answer_en": t.answer_en}
             for t in session.history
@@ -137,9 +133,7 @@ async def process_voice_assessment(
 
         next_step = outcome.get("next_step", "advance")
 
-        # =========================
         # FLOW CONTROL
-        # =========================
         if prompt["stage"] in {"primary", "retry_primary"}:
             if next_step == "retry_primary":
                 manager.advance_after_unsatisfactory_primary(session)
@@ -161,9 +155,7 @@ async def process_voice_assessment(
 
         next_prompt = manager.get_current_prompt(session)
 
-        # =========================
-        # ✅ SAVE TO DB WHEN DONE
-        # =========================
+        # SAVE TO DB WHEN DONE
         if next_prompt["stage"] == "completed":
             try:
                 summary = manager.summarize(session)
@@ -180,20 +172,18 @@ async def process_voice_assessment(
                     "badges": ["AI Verified"]
                 }
 
-                print("🔥 SAVING:", skill_data)
+                print("SAVING:", skill_data)
                 skills_collection.insert_one(skill_data)
 
             except Exception as e:
-                print("❌ DB ERROR:", str(e))
+                print(" DB ERROR:", str(e))
 
             return JSONResponse({
                 "interviewer_text": "Assessment completed",
                 "audio": None
             })
 
-        # =========================
         # NEXT QUESTION
-        # =========================
         next_q = next_prompt["question"]
         response_text = f"{ai_feedback_en} Next question: {next_q}"
 
@@ -221,26 +211,30 @@ def get_summary(session_id: str):
     session = manager.get_session(session_id)
     return manager.summarize(session)
 
-    @router.post("/save-result")
+
+# =========================
+# SAVE RESULT (FIXED)
+# =========================
+@router.post("/save-result")
 def save_result(data: dict):
     try:
         from services.db import skills_collection
 
         skill_data = {
             "user_id": data.get("user_id"),
-            "name": data.get("skill"),   # wallet expects 'name'
-            "trust": data.get("score"),  # wallet expects 'trust'
-            "hours": 2,  # you can improve later
+            "name": data.get("skill"),
+            "trust": data.get("score"),
+            "hours": 2,
             "status": "Verified" if data.get("score", 0) > 70 else "Learning",
             "badges": ["AI Verified"]
         }
 
-        print("🔥 MANUAL SAVE:", skill_data)
+        print(" MANUAL SAVE:", skill_data)
 
         skills_collection.insert_one(skill_data)
 
         return {"success": True}
 
     except Exception as e:
-        print("❌ SAVE ERROR:", str(e))
+        print("SAVE ERROR:", str(e))
         raise HTTPException(status_code=500, detail="Save failed")

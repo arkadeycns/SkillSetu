@@ -2,7 +2,8 @@ from fastapi import APIRouter
 from services.data_provider import get_user_resume_data
 from AI_Service.src.engine.ai_engine import generate_training_recommendations
 
-router = APIRouter(prefix="/api/training", tags=["Training"])
+
+router = APIRouter(tags=["Training"])
 
 @router.post("/recommend")
 async def recommend(data: dict):

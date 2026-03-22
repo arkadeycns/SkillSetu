@@ -15,8 +15,7 @@ ALLOWED_TYPES = [
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 
-
-@router.post("/api/v1/resume/parse")
+@router.post("/parse")
 async def parse_resume(resume: UploadFile = File(...)):
 
     if resume.content_type not in ALLOWED_TYPES:
