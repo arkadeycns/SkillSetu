@@ -1,32 +1,25 @@
-def get_skill_wallet(user_id: int):
+from services.db import skills_collection
 
-    # dummy data for now
-    dummy_users = {
-        1: {
-            "skills": ["Python", "Machine Learning", "Data Analysis"],
-            "score": 88
-        },
-        2: {
-            "skills": ["Electrical Repair", "Wiring", "Safety Inspection"],
-            "score": 75
-        },
-        3: {
-            "skills": ["Plumbing", "Pipe Installation", "Maintenance"],
-            "score": 80
-        }
-    }
+def get_skill_wallet(user_id: str):
 
-    user = dummy_users.get(user_id)
+    # Fetch all skills for this user
+    skills = list(
+        skills_collection.find({"user_id": user_id}, {"_id": 0})
+    )
 
-    if user:
+    # If no skills found
+    if not skills:
         return {
             "user_id": user_id,
-            "skills": user["skills"],
-            "score": user["score"]
+            "skills": [],
+            "score": 0
         }
+
+    # Calculate average score (optional logic)
+    avg_score = sum(skill.get("trust", 0) for skill in skills) / len(skills)
 
     return {
         "user_id": user_id,
-        "skills": [],
-        "score": 0
+        "skills": skills,
+        "score": round(avg_score)
     }
