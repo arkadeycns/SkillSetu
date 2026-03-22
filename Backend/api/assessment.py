@@ -21,6 +21,7 @@ from AI_Service.src.tts.generator import generate_speech
 from AI_Service.src.engine.ai_engine import generate_training_recommendations
 
 from services.data_provider import get_user_resume_data
+from services.db import skills_collection   # ✅ ADDED
 
 router = APIRouter(prefix="/api/assessment", tags=["Assessment"])
 
@@ -31,7 +32,6 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 
 
 def _expected_skills_for_category(category_id: str, user_data: dict) -> List[str]:
-    """Return trade-specific baseline skills using selected assessment category."""
     category_lookup = {
         item.get("id", "").lower(): item.get("title", "").lower()
         for item in list_categories()
@@ -47,58 +47,47 @@ def _expected_skills_for_category(category_id: str, user_data: dict) -> List[str
         return ["pipe fitting", "leak diagnosis", "joint sealing", "safety"]
     if any(key in text for key in ["mechanic", "automotive", "engine"]):
         return ["inspection", "troubleshooting", "preventive maintenance", "tool safety"]
-    if any(key in text for key in ["mern", "developer", "software", "frontend", "backend"]):
+    if any(key in text for key in ["mern", "developer", "software"]):
         return ["problem solving", "api usage", "debugging", "version control"]
 
-    # Fallback: use available user skills to avoid unrelated domain assumptions.
     user_skills = [str(skill).strip() for skill in user_data.get("skills", []) if str(skill).strip()]
-    return user_skills if user_skills else ["core trade fundamentals"]
+    return user_skills if user_skills else ["core fundamentals"]
 
 
-# ==========================================================
+# =========================
 # START SESSION
-# ==========================================================
-
+# =========================
 @router.post("/start-session")
 def start_session(skill: str = Form(...), language: str = Form(...)):
 
+    session = manager.start_session(category_id=skill)
+    session.language = language
+
+    prompt = manager.get_current_prompt(session)
+    question_en = prompt["question"]
+
+    localized_question = (
+        question_en if language.lower().startswith("en")
+        else translate_to_user_language(question_en, language)
+    )
+
     try:
-        session = manager.start_session(category_id=skill)
-        session.language = language
+        audio_path = generate_speech(localized_question, language)
+        with open(audio_path, "rb") as f:
+            audio_base64 = base64.b64encode(f.read()).decode()
+    except:
+        audio_base64 = None
 
-        prompt = manager.get_current_prompt(session)
-        question_en = prompt["question"]
-
-        if language.lower().startswith("en"):
-            localized_question = question_en
-        else:
-            localized_question = translate_to_user_language(question_en, language)
-
-        # 🔥 SAFE TTS
-        try:
-            audio_path = generate_speech(localized_question, language)
-
-            with open(audio_path, "rb") as f:
-                audio_base64 = base64.b64encode(f.read()).decode()
-
-        except Exception as e:
-            print("⚠️ TTS FAILED:", e)
-            audio_base64 = None
-
-        return JSONResponse({
-            "session_id": session.session_id,
-            "question": localized_question,
-            "audio": audio_base64
-        })
-
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    return JSONResponse({
+        "session_id": session.session_id,
+        "question": localized_question,
+        "audio": audio_base64
+    })
 
 
-# ==========================================================
-# VOICE INTERVIEW LOOP
-# ==========================================================
-
+# =========================
+# VOICE LOOP
+# =========================
 @router.post("/assess-voice")
 async def process_voice_assessment(
     audio: UploadFile = File(...),
@@ -117,187 +106,141 @@ async def process_voice_assessment(
 
         user_lang = session.language
 
-        whisper_lang_map = {
-            "english": "en",
-            "hindi": "hi",
-            "hinglish": "hi",
-            "tamil": "ta",
-            "telugu": "te",
-            "bengali": "bn"
-        }
+        # =========================
+        # SPEECH → TEXT
+        # =========================
+        user_text = transcribe_audio(temp_input_path, language="en")
 
-        stt_lang_code = whisper_lang_map.get(user_lang.lower(), "en")
+        english_user_text = (
+            user_text if user_lang.lower().startswith("en")
+            else translate_to_english(user_text, user_lang)
+        )
 
-        # ===============================
-        # SPEECH TO TEXT
-        # ===============================
-
-        user_text = transcribe_audio(temp_input_path, language=stt_lang_code)
-
-        if user_lang.lower().startswith("en"):
-            english_user_text = user_text
-        else:
-            english_user_text = translate_to_english(user_text, user_lang)
-
-        # ===============================
-        # GET USER CONTEXT
-        # ===============================
-
-        user_data = get_user_resume_data(user_id=session.session_id)
-
-        skills = [str(skill).strip() for skill in user_data.get("skills", []) if str(skill).strip()]
-        expected_skills = _expected_skills_for_category(session.category_id, user_data)
-        known_skill_set = {skill.lower() for skill in skills}
-        weaknesses = [s for s in expected_skills if s.lower() not in known_skill_set]
-
-        # ===============================
-        # RAG FEEDBACK
-        # ===============================
-
+        # =========================
+        # DECISION
+        # =========================
         chat_history = [
-            {"question": turn.question_text, "answer_en": turn.answer_en}
-            for turn in getattr(session, "history", [])
+            {"question": t.question_text, "answer_en": t.answer_en}
+            for t in session.history
         ]
 
         outcome = decide_turn_outcome(
             question=question,
             answer_en=english_user_text,
             stage=prompt["stage"],
-            retry_used=getattr(session, "retry_used_for_primary", False),
-            counter_retry_used=getattr(session, "counter_retry_used_for_current", False),
+            retry_used=session.retry_used_for_primary,
+            counter_retry_used=session.counter_retry_used_for_current,
             chat_history=chat_history,
         )
 
-        if outcome.get("use_qa_feedback", True):
-
-            context = f"""
-            User Skills: {skills}
-            User Weakness: {weaknesses}
-            """
-
-            ai_feedback_en = rag_query(
-                question + "\n" + context,
-                english_user_text,
-                chat_history=chat_history
-            )
-        else:
-            ai_feedback_en = outcome.get("feedback", "")
+        ai_feedback_en = rag_query(question, english_user_text)
 
         next_step = outcome.get("next_step", "advance")
 
-        # ===============================
+        # =========================
         # FLOW CONTROL
-        # ===============================
-
+        # =========================
         if prompt["stage"] in {"primary", "retry_primary"}:
-            if next_step == "retry_primary" and prompt["stage"] == "primary":
+            if next_step == "retry_primary":
                 manager.advance_after_unsatisfactory_primary(session)
             elif next_step == "ask_counter":
-                previous_counter_questions = [
-                    turn.question_text
-                    for turn in getattr(session, "history", [])
-                    if str(turn.stage).startswith("counter_")
-                ]
                 counters = generate_counters_for_primary(
-                    primary_question=question,
-                    answer_en=english_user_text,
-                    feedback=ai_feedback_en,
-                    previous_questions=previous_counter_questions,
-                    count=2,
+                    question, english_user_text, ai_feedback_en, [], 2
                 )
-                manager.advance_after_primary(session, counters=counters)
+                manager.advance_after_primary(session, counters)
             else:
                 manager.skip_current_primary(session)
         else:
-            if next_step == "retry_counter":
-                if not manager.retry_current_counter(session):
-                    manager.advance_after_counter(session)
-            else:
-                manager.advance_after_counter(session)
+            manager.advance_after_counter(session)
 
         manager.record_answer(
             session,
             answer_en=english_user_text,
-            evaluation={
-                "feedback": ai_feedback_en,
-                "next_step": outcome.get("next_step", "advance"),
-            },
+            evaluation={"feedback": ai_feedback_en}
         )
 
         next_prompt = manager.get_current_prompt(session)
 
-        training_plan = None
+        # =========================
+        # ✅ SAVE TO DB WHEN DONE
+        # =========================
         if next_prompt["stage"] == "completed":
-            interviewer_text_en = "Assessment complete. Tap End to view your final report."
             try:
-                training_plan = generate_training_recommendations(user_data).get("modules", [])
-            except Exception:
-                training_plan = []
-        else:
-            feedback_en = ai_feedback_en or outcome.get("feedback", "")
-            next_q = next_prompt["question"]
-            interviewer_text_en = f"{feedback_en} Next question: {next_q}" if feedback_en else next_q
+                summary = manager.summarize(session)
 
-        if user_lang.lower().startswith("en"):
-            interviewer_text_local = interviewer_text_en
-            feedback_local = outcome.get("feedback", "")
-        else:
-            interviewer_text_local = translate_to_user_language(interviewer_text_en, user_lang)
-            feedback_local = translate_to_user_language(outcome.get("feedback", ""), user_lang)
+                trust = summary.get("overall_score", 0)
+                hours = round(len(session.history) * 0.1, 1)
 
-        # ===============================
-        # TEXT TO SPEECH
-        # ===============================
+                skill_data = {
+                    "user_id": "test_user_123",
+                    "name": session.category_id,
+                    "trust": trust,
+                    "hours": hours,
+                    "status": "Verified" if trust > 70 else "Learning",
+                    "badges": ["AI Verified"]
+                }
+
+                print("🔥 SAVING:", skill_data)
+                skills_collection.insert_one(skill_data)
+
+            except Exception as e:
+                print("❌ DB ERROR:", str(e))
+
+            return JSONResponse({
+                "interviewer_text": "Assessment completed",
+                "audio": None
+            })
+
+        # =========================
+        # NEXT QUESTION
+        # =========================
+        next_q = next_prompt["question"]
+        response_text = f"{ai_feedback_en} Next question: {next_q}"
 
         try:
-            audio_path = generate_speech(interviewer_text_local, user_lang)
-
+            audio_path = generate_speech(response_text, user_lang)
             with open(audio_path, "rb") as f:
                 audio_base64 = base64.b64encode(f.read()).decode()
-
-        except Exception as e:
-            print("⚠️ TTS FAILED:", e)
+        except:
             audio_base64 = None
 
-        if os.path.exists(temp_input_path):
-            os.remove(temp_input_path)
-
         return JSONResponse({
-            "interviewer_text": interviewer_text_local,
-            "feedback": feedback_local,
-            "audio": audio_base64,
-            "training_plan": training_plan,
+            "interviewer_text": response_text,
+            "audio": audio_base64
         })
 
-    except Exception as exc:
-
-        if os.path.exists(temp_input_path):
-            os.remove(temp_input_path)
-
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# ==========================================================
-# GET CATEGORIES
-# ==========================================================
-
-@router.get("/categories")
-def get_assessment_categories():
-    try:
-        categories = list_categories()
-        return {"categories": categories}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-# ==========================================================
-# SESSION SUMMARY
-# ==========================================================
-
+# =========================
+# SUMMARY
+# =========================
 @router.get("/{session_id}/summary")
 def get_summary(session_id: str):
+    session = manager.get_session(session_id)
+    return manager.summarize(session)
+
+    @router.post("/save-result")
+def save_result(data: dict):
     try:
-        session = manager.get_session(session_id)
-        return manager.summarize(session)
-    except Exception as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        from services.db import skills_collection
+
+        skill_data = {
+            "user_id": data.get("user_id"),
+            "name": data.get("skill"),   # wallet expects 'name'
+            "trust": data.get("score"),  # wallet expects 'trust'
+            "hours": 2,  # you can improve later
+            "status": "Verified" if data.get("score", 0) > 70 else "Learning",
+            "badges": ["AI Verified"]
+        }
+
+        print("🔥 MANUAL SAVE:", skill_data)
+
+        skills_collection.insert_one(skill_data)
+
+        return {"success": True}
+
+    except Exception as e:
+        print("❌ SAVE ERROR:", str(e))
+        raise HTTPException(status_code=500, detail="Save failed")

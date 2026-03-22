@@ -82,6 +82,21 @@ export default function AIInterview() {
 
     try {
       const summaryData = await getInterviewSummary(sessionId);
+      await fetch("http://127.0.0.1:8000/api/assessment/save-result", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    user_id: "test_user_123",
+    skill: selectedSkill,
+    session_id: sessionId,
+    score: summaryData.score,
+    feedback: summaryData.feedback,
+    strengths: summaryData.strengths,
+    weaknesses: summaryData.improvements
+  })
+});
       
       if (summaryData) {
         navigate("/result", { 

@@ -1,4 +1,4 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE_URL = "http://127.0.0.1:8000";
 const ASSESS_VOICE_ENDPOINT = `${API_BASE_URL}/api/assessment/assess-voice`;
 const START_SESSION_ENDPOINT = `${API_BASE_URL}/api/assessment/start-session`;
 const RESUME_PARSE_ENDPOINT = `${API_BASE_URL}/api/v1/resume/parse`;
@@ -218,5 +218,36 @@ export const sendAudioToGuidanceChat = async (audioBlob, sessionId, language = "
   } catch (error) {
     console.error("Chat API Error:", error);
     return { error: "Failed to connect to AI Guide." };
+  }
+};
+// ------------------------------------------------------------------
+// SAVE INTERVIEW RESULT
+// ------------------------------------------------------------------
+export const saveInterviewResult = async (payload) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/assessment/save-result`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) throw new Error("Failed to save result");
+
+    return await response.json();
+  } catch (err) {
+    console.error("Save result error:", err);
+  }
+};
+export const getUserSkills = async (userId) => {
+  try {
+    const res = await fetch(`/api/assessment/my-skills/${userId}`);
+    if (!res.ok) throw new Error("Failed to fetch skills");
+
+    return await res.json();
+  } catch (err) {
+    console.error(err);
+    return null;
   }
 };
