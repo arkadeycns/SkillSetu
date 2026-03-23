@@ -13,8 +13,8 @@ from AI_Service.src.tts.generator import generate_speech
 
 from services.db import skills_collection
 
-
-router = APIRouter(prefix="/api/assessment", tags=["Assessment"])
+# 🔥 FIXED: Removed the prefix="/api/assessment" to stop the 404 Double Prefix bug!
+router = APIRouter(tags=["Assessment"])
 
 manager = InterviewManager()
 
