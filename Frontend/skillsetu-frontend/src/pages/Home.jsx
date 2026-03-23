@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import Layout from "../layout/Layout";
@@ -8,6 +8,40 @@ export default function Home() {
   const navigate = useNavigate();
   const { isSignedIn, isLoaded } = useUser();
   const role = localStorage.getItem("role");
+
+  const [govtStats, setGovtStats] = useState({
+    verified: 0,
+    passRate: 0,
+    topRegion: "Loading..."
+  });
+
+  useEffect(() => {
+    if (isSignedIn && role === "government") {
+      const fetchHomeStats = async () => {
+        try {
+          const res = await fetch("http://localhost:8000/api/admin/stats");
+          const data = await res.json();
+          
+          // Figure out the top region by sorting the heatmap data
+          let topState = "N/A";
+          if (data.heatmapData && data.heatmapData.length > 0) {
+            const sortedStates = [...data.heatmapData].sort((a, b) => b.count - a.count);
+            topState = sortedStates[0].id;
+          }
+
+          setGovtStats({
+            verified: data.passCount || 0,
+            passRate: data.passRate || 0,
+            topRegion: topState
+          });
+        } catch (error) {
+          console.error("Failed to load govt preview stats:", error);
+          setGovtStats(prev => ({ ...prev, topRegion: "Data Offline" }));
+        }
+      };
+      fetchHomeStats();
+    }
+  }, [isSignedIn, role]);
 
   // Routing Handlers
   const handleProfessionalClick = () => {
@@ -64,19 +98,17 @@ export default function Home() {
                   View Regional Reports
                 </button>
               </div>
-
-              {/* Stats Preview for Govt */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-6 pt-12">
-                <div className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700">
-                  <div className="text-yellow-500 text-2xl font-bold">12.4k</div>
+                <div className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700 hover:border-yellow-500/30 transition-colors">
+                  <div className="text-yellow-500 text-2xl font-bold">{govtStats.verified}</div>
                   <div className="text-slate-500 text-xs uppercase font-bold tracking-tighter">Verified Workers</div>
                 </div>
-                <div className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700">
-                  <div className="text-yellow-500 text-2xl font-bold">84%</div>
-                  <div className="text-slate-500 text-xs uppercase font-bold tracking-tighter">Placement Rate</div>
+                <div className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700 hover:border-yellow-500/30 transition-colors">
+                  <div className="text-yellow-500 text-2xl font-bold">{govtStats.passRate}%</div>
+                  <div className="text-slate-500 text-xs uppercase font-bold tracking-tighter">National Pass Rate</div>
                 </div>
-                <div className="hidden md:block p-4 rounded-2xl bg-slate-800/50 border border-slate-700">
-                  <div className="text-yellow-500 text-2xl font-bold">Uttar Pradesh</div>
+                <div className="hidden md:block p-4 rounded-2xl bg-slate-800/50 border border-slate-700 hover:border-yellow-500/30 transition-colors">
+                  <div className="text-yellow-500 text-xl font-bold">{govtStats.topRegion}</div>
                   <div className="text-slate-500 text-xs uppercase font-bold tracking-tighter">Top Region</div>
                 </div>
               </div>
@@ -85,7 +117,7 @@ export default function Home() {
         ) : (
           
           /* --- CONDITION 2: CANDIDATE VIEW --- */
-<div className="flex flex-col w-full">
+          <div className="flex flex-col w-full">
             
             {/* The 50/50 Split */}
             <div className="flex flex-col md:flex-row w-full min-h-[75vh]">

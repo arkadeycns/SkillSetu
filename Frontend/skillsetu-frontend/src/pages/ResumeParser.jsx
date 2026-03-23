@@ -1,21 +1,29 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { parseResume, getTrainingRecommendations } from "../api/aiService";
-import { BookOpen, Bot, Loader2 } from "lucide-react";
+import { BookOpen, Bot, Loader2, MapPin } from "lucide-react";
+import { useAuth, useUser } from "@clerk/clerk-react"; 
+
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Bihar", "Delhi", "Gujarat", "Haryana", 
+  "Karnataka", "Kerala", "Maharashtra", "Punjab", "Rajasthan", 
+  "Tamil Nadu", "Telangana", "Uttar Pradesh", "West Bengal"
+];
 
 export const ResumeParser = () => {
   const navigate = useNavigate();
+  const { userId } = useAuth(); 
+  const { user } = useUser();   
+  
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [parseStep, setParseStep] = useState("");
   const [parsedResult, setParsedResult] = useState(null);
+  const [userState, setUserState] = useState(""); 
   
-  // State for the professional roadmap
   const [trainingPlan, setTrainingPlan] = useState(null);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
-  
-  // Session ID required to initialize the AI chat context
   const [sessionId, setSessionId] = useState("");
 
   const handleDragOver = (e) => {
@@ -44,33 +52,54 @@ export const ResumeParser = () => {
   };
 
   const handleParse = async () => {
-    if (!file) return;
+    if (!file || !userState) return; 
     
     setIsParsing(true);
     setParseStep("Extracting and analyzing document with AI...");
     
-    // Generate a session ID for this professional user
     const currentSessionId = `prof_${Date.now()}`;
     setSessionId(currentSessionId);
 
     try {
       const result = await parseResume(file);
+      const score = result.blue_collar_report?.suitability_score || 0;
+      const role = result.role || "Professional";
       
       setParsedResult({
         name: result.name || "Candidate Profile",
-        role: result.role || "Professional",
+        role: role,
         confidence: result.confidence || "N/A",
         skills: result.skills || [],
         experience: result.experience_level || "Experience Level Unknown",
         summary: result.blue_collar_report?.fitment_summary || "Profile analyzed successfully.",
-        score: result.blue_collar_report?.suitability_score || 0
+        score: score
       });
+
+    
+      if (userId) {
+        try {
+          await fetch("http://localhost:8000/api/user/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              clerk_id: userId,
+              user_name: user?.fullName || result.name || "Resume Candidate",
+              skill_name: role,
+              score: score,
+              result: score >= 50 ? "PASS" : "FAIL",
+              state: userState, 
+              badges: ["Resume Parsed", "AI Verified"]
+            })
+          });
+        } catch (syncError) {
+          console.error("Failed to sync resume to DB:", syncError);
+        }
+      }
 
       setParseStep("Generating custom upskilling roadmap...");
       setIsLoadingPlan(true);
       
       const planData = await getTrainingRecommendations(currentSessionId);
-      // Fixed: Accept either the nested 'recommendations' object or the raw object directly
       if (planData) {
         setTrainingPlan(planData.recommendations || planData);
       }
@@ -254,7 +283,7 @@ export const ResumeParser = () => {
         )}
 
         {/* Action Buttons */}
-        <div className="mt-8 pt-6 border-t border-slate-700 flex flex-col sm:flex-row justify-end gap-4">
+        <div className="mt-8 pt-6 border-t border-slate-700 flex flex-col sm:flex-row justify-end gap-4 items-center">
           {parsedResult ? (
             <>
               <button 
@@ -278,17 +307,37 @@ export const ResumeParser = () => {
               </button>
             </>
           ) : (
-            <button 
-              onClick={handleParse}
-              disabled={!file || isParsing}
-              className={`w-full px-6 py-4 font-black rounded-xl text-lg transition-all ${
-                !file || isParsing
-                  ? "bg-slate-700 text-slate-500 cursor-not-allowed" 
-                  : "bg-yellow-500 hover:bg-yellow-400 text-slate-900 shadow-[0_0_15px_rgba(234,179,8,0.3)] hover:-translate-y-1"
-              }`}
-            >
-              {isParsing ? "Processing..." : "Analyze Resume"}
-            </button>
+            <>
+              {/* NEW LOCATION DROPDOWN */}
+              <div className="w-full sm:w-64 relative">
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                  <MapPin size={20} className="text-slate-400" />
+                </div>
+                <select 
+                  value={userState}
+                  onChange={(e) => setUserState(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 text-slate-200 pl-12 pr-4 py-4 rounded-xl appearance-none focus:outline-none focus:border-yellow-500 font-semibold"
+                >
+                  <option value="" disabled>Select your State...</option>
+                  {INDIAN_STATES.map(state => (
+                    <option key={state} value={state}>{state}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* UPDATED ANALYZE BUTTON */}
+              <button 
+                onClick={handleParse}
+                disabled={!file || !userState || isParsing}
+                className={`w-full sm:w-auto px-8 py-4 font-black rounded-xl text-lg transition-all ${
+                  !file || !userState || isParsing
+                    ? "bg-slate-700 text-slate-500 cursor-not-allowed" 
+                    : "bg-yellow-500 hover:bg-yellow-400 text-slate-900 shadow-[0_0_15px_rgba(234,179,8,0.3)] hover:-translate-y-1"
+                }`}
+              >
+                {isParsing ? "Processing..." : "Analyze Resume"}
+              </button>
+            </>
           )}
         </div>
       </div>

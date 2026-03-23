@@ -148,16 +148,26 @@ export const parseResume = async (resumeFile) => {
 };
 
 // ------------------------------------------------------------------
-// 5. GET TRAINING RECOMMENDATIONS
+// 5. GET TRAINING RECOMMENDATIONS 
 // ------------------------------------------------------------------
-export const getTrainingRecommendations = async (sessionId) => {
+export const getTrainingRecommendations = async (sessionId, contextData = {}) => {
   const TRAINING_ENDPOINT = `${API_BASE_URL}/api/training/recommend`;
   
+  // Package the richer payload
+  const payload = {
+    user_id: sessionId,
+    role: contextData.role || null,
+    skills: contextData.skills || [],
+    language: contextData.language || "en",
+    strengths: contextData.strengths || [],
+    gaps: contextData.gaps || []
+  };
+
   try {
     const response = await fetch(TRAINING_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: sessionId }) 
+      body: JSON.stringify(payload) 
     });
 
     if (!response.ok) throw new Error("Failed to fetch training plan");
@@ -226,8 +236,9 @@ export const sendAudioToGuidanceChat = async (audioBlob, sessionId, language = "
     return { error: "Failed to connect to AI Guide." };
   }
 };
+
 // ------------------------------------------------------------------
-// SAVE INTERVIEW RESULT
+// 8. SAVE INTERVIEW RESULT
 // ------------------------------------------------------------------
 export const saveInterviewResult = async (payload) => {
   try {
@@ -246,6 +257,10 @@ export const saveInterviewResult = async (payload) => {
     console.error("Save result error:", err);
   }
 };
+
+// ------------------------------------------------------------------
+// 9. GET USER SKILLS
+// ------------------------------------------------------------------
 export const getUserSkills = async (userId) => {
   try {
     const res = await fetch(`/api/assessment/my-skills/${userId}`);
