@@ -1,120 +1,102 @@
+// ================= BASE CONFIG =================
 const API_BASE_URL = "http://127.0.0.1:8000";
+
 const ASSESS_VOICE_ENDPOINT = `${API_BASE_URL}/api/assessment/assess-voice`;
 const START_SESSION_ENDPOINT = `${API_BASE_URL}/api/assessment/start-session`;
-const RESUME_PARSE_ENDPOINT = `${API_BASE_URL}/api/v1/resume/parse`;
+const RESUME_PARSE_ENDPOINT = `${API_BASE_URL}/api/resume/parse`;
+
+// ================= LANGUAGE FIX =================
+const mapLanguage = (language) => {
+  const langMap = {
+    English: "en",
+    Hindi: "hi",
+    Hinglish: "en",
+  };
+  return langMap[language] || "en";
+};
 
 // ------------------------------------------------------------------
-// 1. START SESSION (AI Interview)
+// 1. START SESSION
 // ------------------------------------------------------------------
 export const startInterviewSession = async (skill, language) => {
   try {
+    console.log("START SESSION API:", START_SESSION_ENDPOINT);
+
     const formData = new FormData();
     formData.append("skill", skill);
-    formData.append("language", language);
+    formData.append("language", mapLanguage(language)); // ✅ FIX
 
     const response = await fetch(START_SESSION_ENDPOINT, {
       method: "POST",
-      body: formData, 
+      body: formData,
     });
 
-    if (!response.ok) throw new Error("Failed to start AI session");
-
-    const contentType = response.headers.get("content-type");
-    
-    if (contentType && contentType.includes("application/json")) {
-      const data = await response.json();
-      const audioUrl = `data:audio/mpeg;base64,${data.audio || data.audio_base64}`;
-      return { 
-        sessionId: data.session_id, 
-        initialQuestionText: data.question, 
-        initialAudioUrl: audioUrl       
-      };
-    } else {
-      const audioBlob = await response.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const sessionId = response.headers.get("X-Session-ID") || `sess_${Date.now()}`;
-      
-      return { 
-        sessionId: sessionId, 
-        initialQuestionText: "Let's begin the assessment.", 
-        initialAudioUrl: audioUrl       
-      };
+    if (!response.ok) {
+      throw new Error(`Failed: ${response.status}`);
     }
 
+    const data = await response.json();
+
+    return {
+      sessionId: data.session_id,
+      initialQuestionText: data.question,
+      initialAudioUrl: data.audio
+        ? `data:audio/mpeg;base64,${data.audio}`
+        : null,
+    };
   } catch (error) {
     console.error("Error starting session:", error);
-    throw error; 
+    throw error;
   }
 };
 
 // ------------------------------------------------------------------
-// 2. SEND AUDIO TO AI (AI Interview)
+// 2. SEND AUDIO TO AI
 // ------------------------------------------------------------------
 export const sendAudioToAI = async (audioBlob, sessionId) => {
-  const formData = new FormData();
-  const extension = audioBlob?.type?.includes("mp4") ? "m4a" : "webm";
-  
-  formData.append("audio", audioBlob, `interview_audio.${extension}`);
-  formData.append("session_id", sessionId);
-
   try {
+    const formData = new FormData();
+    const extension = audioBlob?.type?.includes("mp4") ? "m4a" : "webm";
+
+    formData.append("audio", audioBlob, `audio.${extension}`);
+    formData.append("session_id", sessionId);
+
     const response = await fetch(ASSESS_VOICE_ENDPOINT, {
       method: "POST",
       body: formData,
     });
 
     if (!response.ok) {
-      let detail = response.statusText;
-      try {
-        if (response.headers.get("content-type")?.includes("application/json")) {
-          const errJson = await response.json();
-          if (errJson?.detail) detail = errJson.detail;
-        }
-      } catch (_) {}
-      throw new Error(`Backend error: ${detail}`);
+      throw new Error(`Backend error: ${response.status}`);
     }
 
-    const contentType = response.headers.get("content-type");
-    
-    if (contentType && contentType.includes("application/json")) {
-      const data = await response.json();
-      const aiAudioUrl = `data:audio/mpeg;base64,${data.audio}`;
-      return { 
-        audioUrl: aiAudioUrl,
-        text: data.interviewer_text || data.question 
-      };
-    } else {
-      const aiResponseBlob = await response.blob();
-      const aiAudioUrl = URL.createObjectURL(aiResponseBlob);
-      return { 
-        audioUrl: aiAudioUrl,
-        text: null 
-      };
-    }
+    const data = await response.json();
 
+    return {
+      audioUrl: data.audio ? `data:audio/mpeg;base64,${data.audio}` : null,
+      text: data.interviewer_text || data.question,
+    };
   } catch (error) {
-    console.error("API Error connecting to Backend:", error);
-    return { error: error?.message || "Unable to process voice response." };
+    console.error("Voice API Error:", error);
+    return { error: "Voice processing failed" };
   }
 };
 
 // ------------------------------------------------------------------
-// 3. GET INTERVIEW SUMMARY
+// 3. GET SUMMARY
 // ------------------------------------------------------------------
 export const getInterviewSummary = async (sessionId) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/assessment/${sessionId}/summary`);
-    
-    if (!response.ok) {
-      throw new Error("Failed to fetch summary from backend.");
-    }
-    
-    const data = await response.json();
-    return data;
-    
+    const url = `${API_BASE_URL}/api/assessment/${sessionId}/summary`;
+
+    const response = await fetch(url);
+
+    if (!response.ok) throw new Error("Failed summary");
+
+    return await response.json();
   } catch (error) {
-    console.error("API Error fetching summary:", error);
-    return null; 
+    console.error("Summary error:", error);
+    return null;
   }
 };
 
@@ -122,22 +104,19 @@ export const getInterviewSummary = async (sessionId) => {
 // 4. PARSE RESUME
 // ------------------------------------------------------------------
 export const parseResume = async (resumeFile) => {
-  const formData = new FormData();
-  formData.append("resume", resumeFile);
-
   try {
+    console.log("RESUME API:", RESUME_PARSE_ENDPOINT);
+
+    const formData = new FormData();
+    formData.append("resume", resumeFile);
+
     const response = await fetch(RESUME_PARSE_ENDPOINT, {
       method: "POST",
       body: formData,
     });
 
     if (!response.ok) {
-      let detail = response.statusText;
-      try {
-        const errJson = await response.json();
-        if (errJson?.detail) detail = errJson.detail;
-      } catch (_) {}
-      throw new Error(`Resume parse failed: ${detail}`);
+      throw new Error(`Resume parse failed: ${response.status}`);
     }
 
     return await response.json();
@@ -148,113 +127,132 @@ export const parseResume = async (resumeFile) => {
 };
 
 // ------------------------------------------------------------------
-// 5. GET TRAINING RECOMMENDATIONS 
+// 5. TRAINING RECOMMENDATIONS
 // ------------------------------------------------------------------
-export const getTrainingRecommendations = async (sessionId, contextData = {}) => {
-  const TRAINING_ENDPOINT = `${API_BASE_URL}/api/training/recommend`;
-  
-  // Package the richer payload
-  const payload = {
-    user_id: sessionId,
-    role: contextData.role || null,
-    skills: contextData.skills || [],
-    language: contextData.language || "en",
-    strengths: contextData.strengths || [],
-    gaps: contextData.gaps || []
-  };
-
+export const getTrainingRecommendations = async (
+  sessionId,
+  contextData = {},
+) => {
   try {
-    const response = await fetch(TRAINING_ENDPOINT, {
+    const payload = {
+      user_id: sessionId,
+      role: contextData.role || null,
+      skills: contextData.skills || [],
+      language: mapLanguage(contextData.language), // ✅ FIX
+      strengths: contextData.strengths || [],
+      gaps: contextData.gaps || [],
+    };
+
+    const response = await fetch(`${API_BASE_URL}/api/training/recommend`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload) 
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
     });
 
-    if (!response.ok) throw new Error("Failed to fetch training plan");
-    
+    if (!response.ok) throw new Error("Training failed");
+
     const result = await response.json();
     return result.success ? result.data : null;
   } catch (error) {
-    console.error("Training API Error:", error);
+    console.error("Training error:", error);
     return null;
   }
 };
 
 // ------------------------------------------------------------------
-// 6. START GUIDANCE CHAT (Initialize Coach Session)
+// 6. START GUIDANCE CHAT
 // ------------------------------------------------------------------
-export const startGuidanceChat = async (sessionId, language = "en", skill = "") => {
-  const START_ENDPOINT = `${API_BASE_URL}/api/chat/start`;
-  
-  const formData = new FormData();
-  formData.append("session_id", sessionId);
-  formData.append("language", language);
-  if (skill) {
-    formData.append("skill", skill);
-  }
-
+export const startGuidanceChat = async (
+  sessionId,
+  language = "English",
+  skill = "",
+) => {
   try {
-    const response = await fetch(START_ENDPOINT, { method: "POST", body: formData });
-    if (!response.ok) throw new Error("Failed to start AI Guide session");
-    
+    const url = `${API_BASE_URL}/api/chat/start`;
+
+    const formData = new FormData();
+    formData.append("session_id", sessionId);
+    formData.append("language", mapLanguage(language)); // ✅ FIX
+    if (skill) formData.append("skill", skill);
+
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) throw new Error("Chat start failed");
+
     const data = await response.json();
-    const aiAudioUrl = data.audio ? `data:audio/mpeg;base64,${data.audio}` : null;
-    
-    return { text: data.greeting, audioUrl: aiAudioUrl };
+
+    return {
+      text: data.greeting,
+      audioUrl: data.audio ? `data:audio/mpeg;base64,${data.audio}` : null,
+    };
   } catch (error) {
-    console.error("Chat Init Error:", error);
-    return { error: "Failed to connect to AI Guide." };
+    console.error("Chat start error:", error);
+    return { error: "Failed to start chat" };
   }
 };
 
 // ------------------------------------------------------------------
-// 7. SEND AUDIO TO GUIDANCE CHAT (Ongoing Coach Conversation)
+// 7. SEND AUDIO TO CHAT
 // ------------------------------------------------------------------
-export const sendAudioToGuidanceChat = async (audioBlob, sessionId, language = "en", skill = "") => {
-  const CHAT_ENDPOINT = `${API_BASE_URL}/api/chat`;
-  
-  const formData = new FormData();
-  const extension = audioBlob?.type?.includes("mp4") ? "m4a" : "webm";
-  
-  formData.append("audio", audioBlob, `chat_audio.${extension}`);
-  formData.append("session_id", sessionId);
-  formData.append("language", language);
-  if (skill) {
-    formData.append("skill", skill);
-  }
-
+export const sendAudioToGuidanceChat = async (
+  audioBlob,
+  sessionId,
+  language = "English",
+  skill = "",
+) => {
   try {
-    const response = await fetch(CHAT_ENDPOINT, { method: "POST", body: formData });
-    if (!response.ok) throw new Error("Failed to connect to AI Guide");
-    
+    const url = `${API_BASE_URL}/api/chat/`;
+
+    const formData = new FormData();
+    const extension = audioBlob?.type?.includes("mp4") ? "m4a" : "webm";
+
+    formData.append("audio", audioBlob, `chat.${extension}`);
+    formData.append("session_id", sessionId);
+    formData.append("language", mapLanguage(language)); // ✅ FIX
+    if (skill) formData.append("skill", skill);
+
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) throw new Error("Chat failed");
+
     const data = await response.json();
-    const aiAudioUrl = data.audio ? `data:audio/mpeg;base64,${data.audio}` : null;
-    
-    return { text: data.reply, audioUrl: aiAudioUrl };
+
+    return {
+      text: data.reply,
+      audioUrl: data.audio ? `data:audio/mpeg;base64,${data.audio}` : null,
+    };
   } catch (error) {
-    console.error("Chat API Error:", error);
-    return { error: "Failed to connect to AI Guide." };
+    console.error("Chat error:", error);
+    return { error: "Chat failed" };
   }
 };
 
 // ------------------------------------------------------------------
-// 8. SAVE INTERVIEW RESULT
+// 8. SAVE RESULT
 // ------------------------------------------------------------------
 export const saveInterviewResult = async (payload) => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/assessment/save-result`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
 
-    if (!response.ok) throw new Error("Failed to save result");
+    if (!response.ok) throw new Error("Save failed");
 
     return await response.json();
-  } catch (err) {
-    console.error("Save result error:", err);
+  } catch (error) {
+    console.error("Save result error:", error);
   }
 };
 
@@ -263,12 +261,15 @@ export const saveInterviewResult = async (payload) => {
 // ------------------------------------------------------------------
 export const getUserSkills = async (userId) => {
   try {
-    const res = await fetch(`/api/assessment/my-skills/${userId}`);
-    if (!res.ok) throw new Error("Failed to fetch skills");
+    const res = await fetch(
+      `${API_BASE_URL}/api/assessment/my-skills/${userId}`,
+    );
+
+    if (!res.ok) throw new Error("Failed skills");
 
     return await res.json();
-  } catch (err) {
-    console.error(err);
+  } catch (error) {
+    console.error("Skills error:", error);
     return null;
   }
 };
