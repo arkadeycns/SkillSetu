@@ -10,7 +10,7 @@ from AI_Service.src.engine.translator import translate_to_english, translate_to_
 from AI_Service.src.stt.transcriber import transcribe_audio
 from AI_Service.src.tts.generator import generate_speech
 
-router = APIRouter(prefix="/api/chat", tags=["Chat"])
+router = APIRouter(tags=["Chat"])
 
 # In-memory session storage
 sessions = {}
@@ -28,10 +28,8 @@ def _start_fallback_greeting(language: str, selected_role: str | None) -> str:
     return f"Welcome. I will guide you step by step for {role_text}. What practical problem do you want to improve today?"
 
 
-# ==========================================================
-#  NORMAL CHAT
-# ==========================================================
-@router.post("")
+# ===================== CHAT =====================
+
 @router.post("/")
 async def chat(
     message: str = Form(None),
@@ -45,7 +43,6 @@ async def chat(
     try:
         audio_lang = "hi" if language.lower() == "hinglish" else language
 
-        # AUDIO → TEXT
         if audio:
             temp_path = f"{TEMP_DIR}/audio_{int(time.time())}_{audio.filename}"
 
@@ -53,7 +50,6 @@ async def chat(
                 with open(temp_path, "wb") as buffer:
                     shutil.copyfileobj(audio.file, buffer)
 
-                # Pass audio_lang instead of language
                 message = transcribe_audio(temp_path, language=audio_lang)
 
             finally:
@@ -70,8 +66,7 @@ async def chat(
             except Exception:
                 normalized_message = message
 
-        history = sessions.get(session_id, [])
-        history = history[-5:]
+        history = sessions.get(session_id, [])[-5:]
 
         user_data = get_user_resume_data(
             user_id=user_id,
@@ -90,7 +85,6 @@ async def chat(
                 "language": language,
             }
 
-        # Keep reasoning in English for parity with interviewer pipeline.
         reply_en = generate_chat_response(
             normalized_message,
             user_data,
@@ -115,7 +109,6 @@ async def chat(
 
         audio_base64 = None
         try:
-            # Pass audio_lang instead of language
             audio_path = generate_speech(reply, audio_lang)
             with open(audio_path, "rb") as f:
                 audio_base64 = base64.b64encode(f.read()).decode()
@@ -131,15 +124,10 @@ async def chat(
 
     except Exception as e:
         print("CHAT ERROR:", e)
-        return {
-            "success": False,
-            "error": "Internal server error"
-        }
+        return {"success": False, "error": "Internal server error"}
 
 
-# ==========================================================
-#  NEW: START CHAT (GREETING)
-# ==========================================================
+# ===================== START CHAT =====================
 @router.post("/start")
 async def start_chat(
     session_id: str = Form("default"),
@@ -157,39 +145,26 @@ async def start_chat(
         )
 
         selected_role = skill or user_data.get("role")
-        if selected_role:
-            user_data = {**user_data, "role": selected_role}
 
-        existing_meta = session_meta.get(session_id, {})
-        if (
-            sessions.get(session_id) is not None
-            and existing_meta.get("role") == selected_role
-            and existing_meta.get("language") == language
-            and existing_meta.get("greeting")
-        ):
-            greeting = str(existing_meta.get("greeting"))
+        greeting_en = generate_greeting(user_data, "en")
+
+        if language.lower().startswith("en"):
+            greeting = greeting_en
         else:
-            # Keep greeting reasoning in English, then localize for user language.
-            greeting_en = generate_greeting(user_data, "en")
-            if language.lower().startswith("en"):
+            try:
+                greeting = translate_to_user_language(greeting_en, language)
+            except Exception:
                 greeting = greeting_en
-            else:
-                try:
-                    greeting = translate_to_user_language(greeting_en, language)
-                except Exception:
-                    greeting = greeting_en
 
-            # reset session on fresh start for this session/role/language tuple
-            sessions[session_id] = []
-            session_meta[session_id] = {
-                "role": selected_role,
-                "language": language,
-                "greeting": greeting,
-            }
+        sessions[session_id] = []
+        session_meta[session_id] = {
+            "role": selected_role,
+            "language": language,
+            "greeting": greeting,
+        }
 
         audio_base64 = None
         try:
-            # Pass audio_lang instead of language
             audio_path = generate_speech(greeting, audio_lang)
             with open(audio_path, "rb") as f:
                 audio_base64 = base64.b64encode(f.read()).decode()
@@ -205,15 +180,7 @@ async def start_chat(
 
     except Exception as e:
         print("START CHAT ERROR:", e)
-        selected_role = skill or "your trade"
-        greeting = _start_fallback_greeting(language, selected_role)
-        session_meta[session_id] = {
-            "role": selected_role,
-            "language": language,
-            "greeting": greeting,
-        }
-        if session_id not in sessions:
-            sessions[session_id] = []
+        greeting = _start_fallback_greeting(language, skill)
         return {
             "success": True,
             "greeting": greeting,
