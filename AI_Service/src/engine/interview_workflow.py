@@ -21,6 +21,35 @@ MODEL_CANDIDATES = [
 ]
 
 
+def _fallback_turn_outcome(stage: str, retry_used: bool) -> dict[str, Any]:
+    """Return a deterministic next-step when AI decisioning is unavailable."""
+
+    if stage == "primary" and not retry_used:
+        return {
+            "next_step": "retry_primary",
+            "feedback": "Please retry with clear technical steps.",
+            "use_qa_feedback": False,
+            "is_abusive": False,
+            "is_retry": True,
+        }
+
+    return {
+        "next_step": "advance",
+        "feedback": "Let us move on to the next question.",
+        "use_qa_feedback": False,
+        "is_abusive": False,
+        "is_retry": False,
+    }
+
+
+def _fallback_counter_questions(primary_question: str) -> list[str]:
+    topic = (primary_question or "this task").strip()
+    return [
+        f"What is the first safety step you would take for {topic}?",
+        f"How would you verify the work was done correctly for {topic}?",
+    ]
+
+
 def _parse_json_payload(raw_text: str) -> dict[str, Any]:
     try:
         return json.loads(raw_text)
@@ -335,14 +364,20 @@ def orchestrate_interview_turn(
     This keeps business logic in AI service and leaves backend endpoint as thin orchestration.
     """
 
-    outcome = decide_turn_outcome(
-        question=question,
-        answer_en=answer_en,
-        stage=prompt["stage"],
-        retry_used=session.retry_used_for_primary,
-        counter_retry_used=session.counter_retry_used_for_current,
-        chat_history=chat_history or [],
-    )
+    try:
+        outcome = decide_turn_outcome(
+            question=question,
+            answer_en=answer_en,
+            stage=prompt["stage"],
+            retry_used=session.retry_used_for_primary,
+            counter_retry_used=session.counter_retry_used_for_current,
+            chat_history=chat_history or [],
+        )
+    except Exception:
+        outcome = _fallback_turn_outcome(
+            stage=prompt["stage"],
+            retry_used=session.retry_used_for_primary,
+        )
 
     is_abusive = bool(outcome.get("is_abusive", False))
     is_retry_step = bool(outcome.get("is_retry", False))
@@ -357,7 +392,10 @@ def orchestrate_interview_turn(
     elif is_retry_step:
         ai_feedback_en = str(outcome.get("feedback", "Please retry with clear technical steps.")).strip()
     else:
-        ai_feedback_en = rag_query(question, answer_en)
+        try:
+            ai_feedback_en = rag_query(question, answer_en)
+        except Exception:
+            ai_feedback_en = str(outcome.get("feedback", "Let us move on to the next question.")).strip()
 
     next_step = str(outcome.get("next_step", "advance"))
 
@@ -365,9 +403,12 @@ def orchestrate_interview_turn(
         if next_step == "retry_primary":
             manager.advance_after_unsatisfactory_primary(session)
         elif next_step == "ask_counter":
-            counters = generate_counters_for_primary(
-                question, answer_en, ai_feedback_en, [], 2
-            )
+            try:
+                counters = generate_counters_for_primary(
+                    question, answer_en, ai_feedback_en, [], 2
+                )
+            except Exception:
+                counters = _fallback_counter_questions(question)
             manager.advance_after_primary(session, counters)
         else:
             manager.skip_current_primary(session)

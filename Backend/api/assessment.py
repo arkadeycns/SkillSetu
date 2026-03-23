@@ -129,6 +129,12 @@ async def process_voice_assessment(
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        try:
+            if os.path.exists(temp_input_path):
+                os.remove(temp_input_path)
+        except Exception:
+            pass
 
 
 @router.get("/{session_id}/summary")
