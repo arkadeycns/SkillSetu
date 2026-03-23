@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+
+# Python virtual environments
+AI_Service/.venv/
+
+# Backend runtime/temp artifacts
+Backend/temp_data/
+Backend/temp_audio/
+Backend/temp_chat_audio/
+Backend/generated_audio/
+Backend/data/response.mp3
+Backend/temp_data/
+Backend/data/admin_seed/.sop_index_state.json
+
+# Frontend dependencies/build caches
+Frontend/skillsetu-frontend/node_modules/
+Frontend/skillsetu-frontend/dist/
+
+# Environment files
+.env
+.env.*
+!.env.example
