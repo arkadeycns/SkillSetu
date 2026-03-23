@@ -221,7 +221,7 @@ def get_summary(session_id: str):
     session = manager.get_session(session_id)
     return manager.summarize(session)
 
-    @router.post("/save-result")
+@router.post("/save-result")
 def save_result(data: dict):
     try:
         from services.db import skills_collection
