@@ -11,9 +11,8 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/DashBoard";
 import RegionalReports from "./pages/RegionalReports";
-import ChooseCoach from './pages/ChooseCoach';
-import GuidanceChat from './pages/GuidanceChat';
-
+import ChooseCoach from "./pages/ChooseCoach";
+import GuidanceChat from "./pages/GuidanceChat";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -28,13 +27,13 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/resume-parser" element={<ResumeParser />} />
-          
+
           <Route path="/login/*" element={<Login />} />
-          <Route path="/signup/*" element={<Signup />} /> 
+          <Route path="/signup/*" element={<Signup />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/chooseskill" element={<ChooseSkill />} />
           <Route path="/interview" element={<AIInterview />} />
-          <Route path="/wallet" element={<Wallet />} /> 
+          <Route path="/wallet" element={<Wallet />} />
           <Route path="/regional-reports" element={<RegionalReports />} />
           <Route path="/result" element={<Result />} />
           <Route path="/choose-coach" element={<ChooseCoach />} />
