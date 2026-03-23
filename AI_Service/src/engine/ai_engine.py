@@ -3,39 +3,125 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any, Dict, List
 
+from groq import Groq
+
+from src.config import GROQ_API_KEY
 from src.rag.qa import career_chat_query, rag_query
 
 
+MODEL_CANDIDATES = [
+    os.environ.get("GROQ_CHAT_MODEL", "llama-3.1-8b-instant").strip(),
+    "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
+]
+
 ABUSE_PATTERNS = [
-    r"\b(?:fuck|f\*+k|bc|mc|chutiya|madarchod|bhosdike|gaand|randi|harami|bastard|idiot|stupid)\b",
+    r"\b(?:fuck|f\*+k|bc|mc|chutiya|madarchod|bhosdike|gaand|randi|harami|bastard|idiot|stupid|moron|shut\s*up)\b",
 ]
 
 
-def _is_abusive(text: str) -> bool:
+def _parse_json_payload(raw_text: str) -> dict[str, Any]:
+    try:
+        return json.loads(raw_text)
+    except Exception:
+        start = raw_text.find("{")
+        end = raw_text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise
+        return json.loads(raw_text[start : end + 1])
+
+
+def _has_explicit_abuse_markers(text: str) -> bool:
     lowered = (text or "").lower()
     return any(re.search(pattern, lowered) for pattern in ABUSE_PATTERNS)
 
 
-def _is_mic_test_or_nonsense(text: str) -> bool:
-    msg = (text or "").strip().lower()
-    if not msg:
-        return True
+def _guidance_turn_decision(
+    message: str,
+    history: List[Dict[str, str]],
+    role: str,
+    language: str,
+) -> Dict[str, str]:
+    """AI-first turn classifier for guidance chat.
 
-    if re.search(r"\b(mic|microphone|audio|sound)\b", msg) and re.search(r"\b(test|testing|check|1\s*,?\s*2\s*,?\s*3)\b", msg):
-        return True
+    Returns dict with:
+    - action: "abuse" | "clarify" | "answer"
+    - assistant_reply: optional direct response for abuse/clarify actions
+    """
 
-    alpha_words = re.findall(r"[a-z]+", msg)
-    if len(alpha_words) <= 2 and re.search(r"\b(test|hello|check|ok|hmm|hmmm|123)\b", msg):
-        return True
+    if not GROQ_API_KEY:
+        return {"action": "answer", "assistant_reply": ""}
 
-    punct = re.sub(r"[\w\s]", "", msg)
-    if len(msg) > 0 and len(punct) / max(1, len(msg)) > 0.4:
-        return True
+    history_text = ""
+    for item in (history or [])[-8:]:
+        history_text += f"User: {item.get('question', '')}\nAssistant: {item.get('answer_en', '')}\n"
 
-    return False
+    lang = (language or "en").strip().lower()
+    lang_rule = "Reply in English."
+    if lang in {"hi", "hindi", "hinglish", "hi-in"}:
+        lang_rule = "Reply in natural Hinglish using only Latin script."
+
+    system_prompt = f"""
+You are the moderation and routing brain for a vocational guidance assistant.
+Classify the user message and return STRICT JSON ONLY:
+{{
+  "action": "abuse" | "clarify" | "answer",
+  "assistant_reply": "string"
+}}
+
+Rules:
+- action=abuse if message contains abusive/profane/hostile language. assistant_reply must be a short warning only.
+- action=clarify if message is mic-test/noise/empty/non-informative. assistant_reply must only say it could not understand and ask user to repeat clearly.
+- action=answer for valid guidance requests; assistant_reply should be empty string.
+- Keep assistant_reply concise (1-2 sentences), practical, professional, and role-aware for: {role}.
+- Do not use slang, jokes, or casual banter.
+- Do not add extra tips, questions, or unrelated guidance for abuse/clarify actions.
+- {lang_rule}
+""".strip()
+
+    user_prompt = f"""
+Conversation history:
+{history_text}
+
+Current user message:
+{message}
+""".strip()
+
+    client = Groq(api_key=GROQ_API_KEY)
+    last_error: Exception | None = None
+    for model_name in MODEL_CANDIDATES:
+        try:
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.1,
+                max_tokens=220,
+            )
+            payload = _parse_json_payload((completion.choices[0].message.content or "").strip())
+            action = str(payload.get("action", "answer")).strip().lower()
+            if action not in {"abuse", "clarify", "answer"}:
+                action = "answer"
+            assistant_reply = str(payload.get("assistant_reply", "")).strip()
+
+            # Guardrail: avoid false positives where gibberish/noise is mislabeled as abuse.
+            if action == "abuse" and not _has_explicit_abuse_markers(message):
+                action = "clarify"
+                assistant_reply = "I could not understand your message. Please repeat clearly."
+
+            return {"action": action, "assistant_reply": assistant_reply}
+        except Exception as exc:
+            last_error = exc
+            continue
+
+    _ = last_error
+    return {"action": "answer", "assistant_reply": ""}
 
 
 def _language_pref(language: str | None) -> str:
@@ -52,33 +138,21 @@ def _fallback_chat_reply(kind: str, language: str, role: str) -> str:
     if kind == "abuse":
         if pref == "hinglish":
             return (
-                "Please gaali mat do. Main aapki job guidance, training aur interview prep mein madad karunga, "
-                "bas respectful language use karein."
+                "Warning: Kripya abusive language use na karein."
             )
-        return (
-            "Please avoid abusive language. I can help with job guidance, training, and interview preparation "
-            "once we keep the conversation respectful."
-        )
+        return "Warning: Please avoid abusive language."
 
     if kind == "nonsense":
         if pref == "hinglish":
-            return (
-                f"Mic check mil gaya, audio theek lag raha hai. Ab {role_text} ka practical sawaal poochiye, "
-                "jaise tools, safety ya next skill steps."
-            )
-        return (
-            f"Mic check received. Audio seems fine. Please ask a practical {role_text} question, "
-            "for example tools, safety checks, or next training steps."
-        )
+            return "Mujhe aapka message samajh nahi aaya. Kripya clear way mein dubara boliye."
+        return "I could not understand your message. Please repeat clearly."
 
     if pref == "hinglish":
         return (
-            f"Main aapko {role_text} role ke liye step-by-step guidance de sakta hoon. "
-            "Ek practical problem bataiye jise aap abhi improve karna chahte hain."
+            f"Main {role_text} role ke queries ke liye professional guidance provide karunga."
         )
     return (
-        f"I can guide you step by step for the {role_text} role. "
-        "Tell me one practical problem you want to improve right now."
+        f"I provide professional guidance for {role_text} queries."
     )
 
 
@@ -172,11 +246,15 @@ def generate_chat_response(
     context = _build_user_snapshot(user_data)
     role = str(selected_role or user_data.get("role") or "blue-collar trade")
 
-    if _is_abusive(message):
-        return _fallback_chat_reply("abuse", language, role)
+    decision = _guidance_turn_decision(message=message, history=history, role=role, language=language)
+    action = str(decision.get("action", "answer")).strip().lower()
+    assistant_reply = str(decision.get("assistant_reply", "")).strip()
 
-    if _is_mic_test_or_nonsense(message):
-        return _fallback_chat_reply("nonsense", language, role)
+    if action == "abuse":
+        return assistant_reply or _fallback_chat_reply("abuse", language, role)
+
+    if action == "clarify":
+        return assistant_reply or _fallback_chat_reply("nonsense", language, role)
 
     try:
         return career_chat_query(

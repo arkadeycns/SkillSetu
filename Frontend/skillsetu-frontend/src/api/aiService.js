@@ -173,12 +173,15 @@ export const getTrainingRecommendations = async (sessionId) => {
 // ------------------------------------------------------------------
 // 6. START GUIDANCE CHAT (Initialize Coach Session)
 // ------------------------------------------------------------------
-export const startGuidanceChat = async (sessionId, language = "en") => {
+export const startGuidanceChat = async (sessionId, language = "en", skill = "") => {
   const START_ENDPOINT = `${API_BASE_URL}/api/chat/start`;
   
   const formData = new FormData();
   formData.append("session_id", sessionId);
   formData.append("language", language);
+  if (skill) {
+    formData.append("skill", skill);
+  }
 
   try {
     const response = await fetch(START_ENDPOINT, { method: "POST", body: formData });
@@ -197,7 +200,7 @@ export const startGuidanceChat = async (sessionId, language = "en") => {
 // ------------------------------------------------------------------
 // 7. SEND AUDIO TO GUIDANCE CHAT (Ongoing Coach Conversation)
 // ------------------------------------------------------------------
-export const sendAudioToGuidanceChat = async (audioBlob, sessionId, language = "en") => {
+export const sendAudioToGuidanceChat = async (audioBlob, sessionId, language = "en", skill = "") => {
   const CHAT_ENDPOINT = `${API_BASE_URL}/api/chat`;
   
   const formData = new FormData();
@@ -206,6 +209,9 @@ export const sendAudioToGuidanceChat = async (audioBlob, sessionId, language = "
   formData.append("audio", audioBlob, `chat_audio.${extension}`);
   formData.append("session_id", sessionId);
   formData.append("language", language);
+  if (skill) {
+    formData.append("skill", skill);
+  }
 
   try {
     const response = await fetch(CHAT_ENDPOINT, { method: "POST", body: formData });

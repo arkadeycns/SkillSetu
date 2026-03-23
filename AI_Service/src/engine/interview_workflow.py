@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 from groq import Groq
 
 from src.config import GROQ_API_KEY
+from src.rag.qa import rag_query
 from src.rag.retriever import retrieve_sops
 
 
@@ -42,7 +43,14 @@ def _parse_turn_payload(raw_text: str) -> dict[str, str]:
         next_step = str(payload.get("next_step", "")).strip().lower()
         feedback = str(payload.get("feedback", "")).strip()
         if next_step:
-            return {"next_step": next_step, "feedback": feedback}
+            is_abusive_raw = str(payload.get("is_abusive", "")).strip().lower()
+            is_retry_raw = str(payload.get("is_retry", "")).strip().lower()
+            return {
+                "next_step": next_step,
+                "feedback": feedback,
+                "is_abusive": "true" if is_abusive_raw == "true" else "false",
+                "is_retry": "true" if is_retry_raw == "true" else "false",
+            }
     except Exception:
         pass
 
@@ -50,9 +58,13 @@ def _parse_turn_payload(raw_text: str) -> dict[str, str]:
     # NEXT_STEP: ask_counter
     # FEEDBACK: Your answer is clear.
     # USE_QA_FEEDBACK: true
+    # IS_ABUSIVE: false
+    # IS_RETRY: false
     match_next = re.search(r"NEXT_STEP\s*:\s*(retry_primary|ask_counter|advance)", text, flags=re.IGNORECASE)
     match_feedback = re.search(r"FEEDBACK\s*:\s*(.+)", text, flags=re.IGNORECASE | re.DOTALL)
     match_use_qa = re.search(r"USE_QA_FEEDBACK\s*:\s*(true|false)", text, flags=re.IGNORECASE)
+    match_abuse = re.search(r"IS_ABUSIVE\s*:\s*(true|false)", text, flags=re.IGNORECASE)
+    match_retry = re.search(r"IS_RETRY\s*:\s*(true|false)", text, flags=re.IGNORECASE)
 
     if not match_next:
         raise ValueError("Could not parse NEXT_STEP from model response.")
@@ -68,6 +80,10 @@ def _parse_turn_payload(raw_text: str) -> dict[str, str]:
     }
     if match_use_qa:
         payload["use_qa_feedback"] = match_use_qa.group(1).lower()
+    if match_abuse:
+        payload["is_abusive"] = match_abuse.group(1).lower()
+    if match_retry:
+        payload["is_retry"] = match_retry.group(1).lower()
     return payload
 
 
@@ -110,24 +126,30 @@ Use simple language and decide the next step from this fixed set:
 - advance
 
 Return ONLY in one of these formats:
-1) JSON object with keys next_step, feedback, use_qa_feedback
-2) Plain text with exactly three lines:
-     NEXT_STEP: retry_primary|retry_counter|ask_counter|advance
+1) JSON object with keys next_step, feedback, use_qa_feedback, is_abusive, is_retry
+2) Plain text with exactly five lines:
+    NEXT_STEP: retry_primary|ask_counter|advance
    FEEDBACK: one short sentence to the learner
      USE_QA_FEEDBACK: true|false
+     IS_ABUSIVE: true|false
+     IS_RETRY: true|false
 
 Decision guidance:
+- If the answer contains abusive/profane language:
+    set NEXT_STEP=advance, USE_QA_FEEDBACK=false, IS_ABUSIVE=true, IS_RETRY=false.
+    FEEDBACK must firmly condemn abusive language and state that interview is moving to next question.
 - Explicit skip intent ("next", "skip", "pass", "I don't know", "no idea", "not sure"):
-    set NEXT_STEP=advance and FEEDBACK="It's okay, let's move on to the next question." and USE_QA_FEEDBACK=false.
+    set NEXT_STEP=advance and FEEDBACK="It's okay, let's move on to the next question." and USE_QA_FEEDBACK=false and IS_ABUSIVE=false and IS_RETRY=false.
 - Gibberish/unclear:
-    if stage=primary and retry_used=false => NEXT_STEP=retry_primary, USE_QA_FEEDBACK=false.
-    if stage=retry_primary => NEXT_STEP=advance, USE_QA_FEEDBACK=false.
-    if stage in counter_1/counter_2 and counter_retry_used=false => NEXT_STEP=retry_counter, USE_QA_FEEDBACK=false.
-    if stage in counter_1/counter_2 and counter_retry_used=true => NEXT_STEP=advance, USE_QA_FEEDBACK=false.
-- Satisfactory main answer: NEXT_STEP=ask_counter and USE_QA_FEEDBACK=true.
+    if stage=primary and retry_used=false => NEXT_STEP=retry_primary, USE_QA_FEEDBACK=false, IS_RETRY=true.
+    if stage=retry_primary => NEXT_STEP=advance, USE_QA_FEEDBACK=false, IS_RETRY=false.
+    if stage in counter_1/counter_2 => NEXT_STEP=advance, USE_QA_FEEDBACK=false, IS_RETRY=false.
+- Satisfactory main answer: NEXT_STEP=ask_counter and USE_QA_FEEDBACK=true and IS_RETRY=false.
 - Unsatisfactory but understandable main answer: retry only once on primary, then advance.
-- For counter answers, no unsatisfactory retries; only gibberish gets one retry.
+- For counter answers, NEVER retry.
 - Keep FEEDBACK in second person and concise.
+- FEEDBACK for any retry decision must explicitly include the word "retry".
+- When not abusive, set IS_ABUSIVE=false.
 
 SOP context:
 {sop_context}
@@ -177,11 +199,25 @@ Worker answer:
 
             use_qa_raw = str(payload.get("use_qa_feedback", "")).strip().lower()
             use_qa_feedback = use_qa_raw != "false"
+            is_abusive = str(payload.get("is_abusive", "")).strip().lower() == "true"
+            is_retry = str(payload.get("is_retry", "")).strip().lower() == "true"
+
+            # Guardrail: counter stages should never retry even if model output says so.
+            if stage in {"counter_1", "counter_2"} and next_step in {"retry_primary", "retry_counter"}:
+                next_step = "advance"
+                is_retry = False
+                if "retry" in feedback.lower():
+                    feedback = "Moving to the next question."
+
+            if next_step in {"retry_primary", "retry_counter"} and "retry" not in feedback.lower():
+                feedback = f"Please retry: {feedback}" if feedback else "Please retry with a clearer technical answer."
 
             return {
                 "next_step": next_step,
                 "feedback": feedback,
                 "use_qa_feedback": use_qa_feedback,
+                "is_abusive": is_abusive,
+                "is_retry": is_retry,
             }
         except Exception as exc:
             last_error = exc
@@ -283,3 +319,97 @@ Generate {count} follow-up questions.
         )
 
     return cleaned[:count]
+
+
+def orchestrate_interview_turn(
+    *,
+    manager: Any,
+    session: Any,
+    prompt: Dict[str, Any],
+    question: str,
+    answer_en: str,
+    chat_history: List[Dict[str, str]] | None = None,
+) -> Dict[str, Any]:
+    """Run one complete interview turn and return next response metadata.
+
+    This keeps business logic in AI service and leaves backend endpoint as thin orchestration.
+    """
+
+    outcome = decide_turn_outcome(
+        question=question,
+        answer_en=answer_en,
+        stage=prompt["stage"],
+        retry_used=session.retry_used_for_primary,
+        counter_retry_used=session.counter_retry_used_for_current,
+        chat_history=chat_history or [],
+    )
+
+    is_abusive = bool(outcome.get("is_abusive", False))
+    is_retry_step = bool(outcome.get("is_retry", False))
+
+    if is_abusive:
+        ai_feedback_en = str(
+            outcome.get(
+                "feedback",
+                "Abusive language is not acceptable. Moving to the next question.",
+            )
+        ).strip()
+    elif is_retry_step:
+        ai_feedback_en = str(outcome.get("feedback", "Please retry with clear technical steps.")).strip()
+    else:
+        ai_feedback_en = rag_query(question, answer_en)
+
+    next_step = str(outcome.get("next_step", "advance"))
+
+    if prompt["stage"] in {"primary", "retry_primary"}:
+        if next_step == "retry_primary":
+            manager.advance_after_unsatisfactory_primary(session)
+        elif next_step == "ask_counter":
+            counters = generate_counters_for_primary(
+                question, answer_en, ai_feedback_en, [], 2
+            )
+            manager.advance_after_primary(session, counters)
+        else:
+            manager.skip_current_primary(session)
+    else:
+        manager.advance_after_counter(session)
+
+    manager.record_answer(
+        session,
+        answer_en=answer_en,
+        evaluation={
+            "feedback": ai_feedback_en,
+            "next_step": next_step,
+            "is_abusive": is_abusive,
+            "is_retry": is_retry_step,
+            "pass_fail": not is_abusive,
+        },
+    )
+
+    next_prompt = manager.get_current_prompt(session)
+    if next_prompt["stage"] == "completed":
+        return {
+            "completed": True,
+            "next_prompt": next_prompt,
+            "response_text": "Assessment completed",
+            "feedback": ai_feedback_en,
+            "next_step": next_step,
+            "is_abusive": is_abusive,
+            "is_retry": is_retry_step,
+        }
+
+    next_q = str(next_prompt["question"])
+    if next_prompt["stage"] == "retry_primary" and is_retry_step:
+        response_text = f"{ai_feedback_en} Retry question: {next_q}"
+    else:
+        response_text = f"{ai_feedback_en} Next question: {next_q}"
+
+    return {
+        "completed": False,
+        "next_prompt": next_prompt,
+        "response_text": response_text,
+        "feedback": ai_feedback_en,
+        "next_step": next_step,
+        "is_abusive": is_abusive,
+        "is_retry": is_retry_step,
+    }

@@ -22,6 +22,9 @@ Frontend/skillsetu-frontend/node_modules/
 Frontend/skillsetu-frontend/dist/
 
 # Environment files
-.env
+.envgit -C "/Users/arkadey/Sankalp AI hackathon/SkillSetu" add .gitignore
+git -C "/Users/arkadey/Sankalp AI hackathon/SkillSetu" rm --cached Backend/data/response.mp3 Backend/data/admin_seed/.sop_index_state.json
+git -C "/Users/arkadey/Sankalp AI hackathon/SkillSetu" commit -m "chore: ignore runtime audio and sop index state"
+git -C "/Users/arkadey/Sankalp AI hackathon/SkillSetu" push origin main
 .env.*
 !.env.example

@@ -8,7 +8,7 @@ from typing import List
 
 # Interview engine
 from AI_Service.src.engine.interview_manager import InterviewManager
-from AI_Service.src.engine.interview_workflow import decide_turn_outcome, generate_counters_for_primary
+from AI_Service.src.engine.interview_workflow import orchestrate_interview_turn
 from AI_Service.src.engine.question_bank import list_categories
 
 # NLP utilities
@@ -123,48 +123,30 @@ async def process_voice_assessment(
             {"question": t.question_text, "answer_en": t.answer_en}
             for t in session.history
         ]
-
-        outcome = decide_turn_outcome(
+        turn_result = orchestrate_interview_turn(
+            manager=manager,
+            session=session,
+            prompt=prompt,
             question=question,
             answer_en=english_user_text,
-            stage=prompt["stage"],
-            retry_used=session.retry_used_for_primary,
-            counter_retry_used=session.counter_retry_used_for_current,
             chat_history=chat_history,
         )
 
-        ai_feedback_en = rag_query(question, english_user_text)
-
-        next_step = outcome.get("next_step", "advance")
-
-        # =========================
-        # FLOW CONTROL
-        # =========================
-        if prompt["stage"] in {"primary", "retry_primary"}:
-            if next_step == "retry_primary":
-                manager.advance_after_unsatisfactory_primary(session)
-            elif next_step == "ask_counter":
-                counters = generate_counters_for_primary(
-                    question, english_user_text, ai_feedback_en, [], 2
-                )
-                manager.advance_after_primary(session, counters)
-            else:
-                manager.skip_current_primary(session)
+        response_text_en = str(turn_result["response_text"])
+        if user_lang.lower().startswith("en"):
+            response_text = response_text_en
         else:
-            manager.advance_after_counter(session)
+            try:
+                response_text = translate_to_user_language(response_text_en, user_lang)
+            except Exception:
+                response_text = response_text_en
 
-        manager.record_answer(
-            session,
-            answer_en=english_user_text,
-            evaluation={"feedback": ai_feedback_en}
-        )
-
-        next_prompt = manager.get_current_prompt(session)
+        next_prompt = turn_result["next_prompt"]
 
         # =========================
         # ✅ SAVE TO DB WHEN DONE
         # =========================
-        if next_prompt["stage"] == "completed":
+        if turn_result["completed"]:
             try:
                 summary = manager.summarize(session)
 
@@ -187,15 +169,9 @@ async def process_voice_assessment(
                 print("❌ DB ERROR:", str(e))
 
             return JSONResponse({
-                "interviewer_text": "Assessment completed",
+                "interviewer_text": response_text,
                 "audio": None
             })
-
-        # =========================
-        # NEXT QUESTION
-        # =========================
-        next_q = next_prompt["question"]
-        response_text = f"{ai_feedback_en} Next question: {next_q}"
 
         try:
             audio_path = generate_speech(response_text, user_lang)

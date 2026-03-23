@@ -62,25 +62,65 @@ def _normalize_list(value: Any, max_items: int = 6) -> list[str]:
     return list(dict.fromkeys(items))[:max_items]
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _clamp_score(value: int) -> int:
+    return max(1, min(100, int(value)))
+
+
 def _contains_any(text: str, patterns: list[str]) -> bool:
     lowered = (text or "").lower()
     return any(re.search(pattern, lowered) for pattern in patterns)
 
 
+def _technical_signal_count(history: list[dict[str, Any]]) -> int:
+    count = 0
+    for item in history:
+        answer = str(item.get("answer_en") or "")
+        if _is_abusive_answer(answer):
+            continue
+        if _contains_any(answer, TECH_SIGNAL_PATTERNS):
+            count += 1
+    return count
+
+
 def _abusive_count(history: list[dict[str, Any]]) -> int:
     count = 0
     for item in history:
+        eval_flag = item.get("evaluation", {}).get("is_abusive")
+        if isinstance(eval_flag, bool):
+            if eval_flag:
+                count += 1
+            continue
         answer = str(item.get("answer_en") or "").lower()
         if any(re.search(pattern, answer) for pattern in ABUSE_PATTERNS):
             count += 1
     return count
 
 
+def _is_abusive_answer(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(re.search(pattern, lowered) for pattern in ABUSE_PATTERNS)
+
+
 def _filter_technical_strengths(strengths: list[str], history: list[dict[str, Any]]) -> list[str]:
     if not strengths:
         return []
 
-    history_blob = " ".join(str(item.get("answer_en") or "") for item in history).lower()
+    non_abusive_answers = [
+        str(item.get("answer_en") or "")
+        for item in history
+        if not _is_abusive_answer(str(item.get("answer_en") or ""))
+    ]
+    history_blob = " ".join(non_abusive_answers).lower()
+    if not history_blob.strip():
+        return []
+
     filtered: list[str] = []
     for strength in strengths:
         text = (strength or "").strip()
@@ -120,7 +160,7 @@ def _heuristic_report(history: list[dict[str, Any]]) -> dict[str, Any]:
     total_turns = len(history)
     if total_turns == 0:
         return {
-            "overall_score": 0,
+            "overall_score": 1,
             "result": "INCOMPLETE",
             "summary": "Assessment has no responses yet, so scoring could not be completed.",
             "feedback": "Please complete at least a few interview responses for an accurate evaluation.",
@@ -143,10 +183,11 @@ def _heuristic_report(history: list[dict[str, Any]]) -> dict[str, Any]:
     )
     vague_count = sum(1 for answer in answers if len(answer.split()) < 6)
     abusive_count = _abusive_count(history)
+    technical_count = _technical_signal_count(history)
 
     completion_factor = min(1.0, total_turns / 8)
     base = 38 + int(avg_words * 1.6) + (safety_hits * 3) + (step_hits * 2) + int(completion_factor * 18)
-    score = max(0, min(94, base - vague_count * 6 - abusive_count * 18))
+    score = _clamp_score(max(0, min(94, base - vague_count * 6 - abusive_count * 18)))
     result = "PASS" if score >= 60 else "FAIL"
 
     strengths: list[str] = []
@@ -165,6 +206,13 @@ def _heuristic_report(history: list[dict[str, Any]]) -> dict[str, Any]:
 
     if abusive_count > 0:
         improvements.insert(0, "Use respectful professional language; abusive words are unacceptable in assessment.")
+        result = "FAIL"
+        strengths = []
+
+    abusive_ratio = abusive_count / max(1, total_turns)
+    if abusive_ratio >= 0.5 and technical_count == 0:
+        # Catastrophic interview quality: mostly abuse and no technical evidence.
+        score = 1
         result = "FAIL"
 
     if result == "PASS":
@@ -239,19 +287,22 @@ Use this SOP context while judging the candidate:
 Return STRICT JSON only:
 {{
   "overall_score": integer 0-100,
+    "completion_adjusted_score": integer 0-100,
   "result": "PASS" | "FAIL" | "INCOMPLETE",
   "summary": "2-3 sentence final assessment summary",
   "feedback": "2-3 sentence practical improvement guidance",
   "strengths": ["string"],
-  "improvements": ["string"]
+    "improvements": ["string"],
+    "scoring_rationale": "1-2 sentence explanation of how score was decided"
 }}
 
 Scoring rules:
 - Reward concrete steps, sequencing, safety awareness, and verification language.
 - Penalize vague or very short responses.
 - Use strict but fair grading for blue-collar practical readiness.
-- Penalize incomplete interviews proportionally to unanswered primary questions.
+- Apply completion penalty directly in completion_adjusted_score.
 - If interview is not completed, result must be "INCOMPLETE".
+- Penalize abusive/profane language as professionalism failure.
 - Write summary and feedback directly to "you" (second person), never third person.
 - Do not use generic praise like "willingness to learn" unless no other strength is available.
 - Strengths and improvements should be specific and evidence-based.
@@ -260,6 +311,8 @@ Scoring rules:
     user_prompt = f"""
 Category: {category_id}
 Primary Questions Completed: {completed_primaries}/{total_primaries}
+Completion ratio: {completion_ratio:.2f}
+Detected abusive answer turns: {_abusive_count(history)}
 
 Interview History:
 {history_blob}
@@ -275,14 +328,12 @@ Interview History:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.2,
-                max_tokens=420,
+                max_tokens=520,
             )
 
             payload = _parse_json_payload(completion.choices[0].message.content.strip())
-            score = int(payload.get("overall_score", 0))
-            score = max(0, min(100, score))
-            # Apply deterministic incompleteness penalty regardless of model output.
-            score = int(round(score * (0.35 + 0.65 * completion_ratio)))
+            score = _safe_int(payload.get("completion_adjusted_score"), _safe_int(payload.get("overall_score"), 1))
+            score = _clamp_score(score)
             result = str(payload.get("result", "INCOMPLETE")).upper().strip()
             if result not in {"PASS", "FAIL", "INCOMPLETE"}:
                 result = "PASS" if score >= 60 else "FAIL"
@@ -302,12 +353,23 @@ Interview History:
                 improvements = _heuristic_report(history).get("improvements", [])
 
             abusive_count = _abusive_count(history)
+            technical_count = _technical_signal_count(history)
             if abusive_count > 0:
                 if "Use respectful professional language; abusive words are unacceptable in assessment." not in improvements:
                     improvements.insert(0, "Use respectful professional language; abusive words are unacceptable in assessment.")
-                if completion_ratio >= 1.0:
+
+                abusive_ratio = abusive_count / max(1, len(history))
+                if abusive_ratio >= 0.25:
+                    # Suppress strengths when abuse materially contaminates interview evidence.
+                    strengths = []
+
+                # Force near-minimum scores for abusive/no-technical interviews.
+                if abusive_ratio >= 0.5 and technical_count == 0:
+                    score = 1
                     result = "FAIL"
-                score = max(0, score - abusive_count * 18)
+                elif abusive_ratio >= 0.25 and technical_count <= 1:
+                    score = min(score, 5)
+                    result = "FAIL"
 
             return {
                 "overall_score": score,
@@ -322,7 +384,8 @@ Interview History:
 
     report = _heuristic_report(history)
     if completion_ratio < 1.0:
-        report["overall_score"] = int(round(report["overall_score"] * (0.35 + 0.65 * completion_ratio)))
+        # Keep incompleteness penalty, but allow poor interviews to remain very low.
+        report["overall_score"] = _clamp_score(int(round(report["overall_score"] * (0.1 + 0.9 * completion_ratio))))
         report["result"] = "INCOMPLETE"
         report["summary"] = (
             f"{report['summary']} You completed {completed_primaries}/{total_primaries} primary questions."

@@ -10,6 +10,7 @@ export default function GuidanceChat() {
   
   const [sessionId] = useState(location.state?.sessionId || `chat_${Date.now()}`);
   const sessionLang = location.state?.lang || "English";
+  const sessionSkill = location.state?.skill || "";
 
   const { isRecording, startRecording, stopRecording } = useVoiceRecorder();
   
@@ -20,6 +21,16 @@ export default function GuidanceChat() {
   const [stagedAudioUrl, setStagedAudioUrl] = useState(null);
   
   const chatEndRef = useRef(null);
+  const hasInitialized = useRef(false);
+
+  const fallbackGreeting = (() => {
+    const roleText = sessionSkill || "your trade";
+    const lang = (sessionLang || "English").toLowerCase();
+    if (lang === "hindi" || lang === "hinglish") {
+      return `Namaste. ${roleText} role ke liye aapko step-by-step guidance dunga. Aaj kis practical problem par kaam karna hai?`;
+    }
+    return `Welcome. I will guide you step by step for ${roleText}. What practical problem do you want to improve today?`;
+  })();
 
   // ==========================================================
   // THE HANDSHAKE (Calling the new /start endpoint)
@@ -27,7 +38,7 @@ export default function GuidanceChat() {
   useEffect(() => {
     const initializeChat = async () => {
       try {
-        const aiResult = await startGuidanceChat(sessionId, sessionLang);
+        const aiResult = await startGuidanceChat(sessionId, sessionLang, sessionSkill);
         
         if (aiResult && (aiResult.text || aiResult.audioUrl)) {
           setMessages([{ 
@@ -36,16 +47,17 @@ export default function GuidanceChat() {
             audioUrl: aiResult.audioUrl 
           }]);
         } else {
-          setMessages([{ sender: 'ai', text: "Hello! What would you like to learn today?" }]);
+          setMessages([{ sender: 'ai', text: fallbackGreeting }]);
         }
       } catch (error) {
-        setMessages([{ sender: 'ai', text: "Hello! What would you like to learn today?" }]);
+        setMessages([{ sender: 'ai', text: fallbackGreeting }]);
       } finally {
         setIsProcessing(false);
       }
     };
 
-    if (messages.length === 0) {
+    if (!hasInitialized.current && messages.length === 0) {
+      hasInitialized.current = true;
       initializeChat();
     }
   }, []);
@@ -82,7 +94,7 @@ export default function GuidanceChat() {
     setIsProcessing(true);
     
     // Pass the language context to every chat!
-    const aiResult = await sendAudioToGuidanceChat(blobToSend, sessionId, sessionLang);
+    const aiResult = await sendAudioToGuidanceChat(blobToSend, sessionId, sessionLang, sessionSkill);
     setIsProcessing(false);
 
     if (aiResult && (aiResult.text || aiResult.audioUrl)) {
