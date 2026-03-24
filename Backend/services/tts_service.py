@@ -2,12 +2,11 @@ from gtts import gTTS
 import uuid
 import os
 
-#  Ensure audio folder exists
+# Ensure audio folder exists
 AUDIO_DIR = "audio"
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
-
-#  Language mapping
+# Language mapping
 LANGUAGE_MAP = {
     "hindi": "hi",
     "english": "en",
@@ -23,14 +22,17 @@ LANGUAGE_MAP = {
 
 
 # ==========================================================
-#  Normalize language input
+# Normalize language input
 # ==========================================================
-
 def _normalize_language(language_code: str | None) -> str:
     if not language_code:
         return "en"
 
     lang = language_code.strip().lower()
+
+    # 🔥 FIX: Handle Hinglish
+    if lang == "hinglish":
+        return "hi"
 
     # Map known languages
     if lang in LANGUAGE_MAP:
@@ -48,9 +50,20 @@ def _normalize_language(language_code: str | None) -> str:
 
 
 # ==========================================================
-#  TEXT → SPEECH
+# OPTIONAL: Improve Hinglish pronunciation
 # ==========================================================
+def _preprocess_text(text: str, lang: str) -> str:
+    if lang == "hi":
+        # Very basic replacements (safe)
+        text = text.replace("hai", "है")
+        text = text.replace("nahi", "नहीं")
+        text = text.replace("kaam", "काम")
+    return text
 
+
+# ==========================================================
+# TEXT → SPEECH
+# ==========================================================
 def generate_speech(text: str, language_code: str = "en") -> str:
     """
     Converts text → speech and returns file path
@@ -62,29 +75,27 @@ def generate_speech(text: str, language_code: str = "en") -> str:
 
         lang = _normalize_language(language_code)
 
-        #  Unique filename
+        # 🔥 Improve pronunciation
+        processed_text = _preprocess_text(text, lang)
+
+        # Unique filename
         filename = f"{AUDIO_DIR}/audio_{uuid.uuid4()}.mp3"
 
-        #  Generate speech
-        tts = gTTS(text=text, lang=lang)
+        # Generate speech
+        tts = gTTS(text=processed_text, lang=lang)
         tts.save(filename)
 
         return filename
 
     except Exception as e:
-        print(" TTS ERROR:", e)
+        print("TTS ERROR:", e)
         raise e
 
 
 # ==========================================================
-#  OPTIONAL: CLEAN OLD AUDIO FILES
+# CLEANUP
 # ==========================================================
-
 def cleanup_audio_files(max_files: int = 50):
-    """
-    Keeps only latest N audio files (prevents storage overflow)
-    """
-
     try:
         files = [
             os.path.join(AUDIO_DIR, f)
@@ -92,13 +103,11 @@ def cleanup_audio_files(max_files: int = 50):
             if f.endswith(".mp3")
         ]
 
-        # Sort by creation time
         files.sort(key=os.path.getctime)
 
-        # Remove old files
         if len(files) > max_files:
             for f in files[:-max_files]:
                 os.remove(f)
 
     except Exception as e:
-        print(" Cleanup failed:", e)
+        print("Cleanup failed:", e)
