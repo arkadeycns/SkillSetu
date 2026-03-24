@@ -80,6 +80,7 @@ app.add_middleware(
         "http://127.0.0.1:5174",
         "https://skillsetu-nvtq1es7l-hrideshs-projects-f8a2f486.vercel.app"
         "https://skillsetu-app.vercel.app"
+        "https://skillsetu-app-76gg.vercel.app"
     ],
     allow_origin_regex=r"https://.*\.vercel\.app", # Safely allows any future Vercel preview links too
     allow_credentials=True,
