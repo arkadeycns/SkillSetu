@@ -1,5 +1,5 @@
 // ================= BASE CONFIG =================
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, '');
 
 const ASSESS_VOICE_ENDPOINT = `${API_BASE_URL}/api/assessment/assess-voice`;
 const START_SESSION_ENDPOINT = `${API_BASE_URL}/api/assessment/start-session`;
@@ -7,12 +7,13 @@ const RESUME_PARSE_ENDPOINT = `${API_BASE_URL}/api/resume/parse`;
 
 // ================= LANGUAGE FIX =================
 const mapLanguage = (language) => {
+  if (!language) return "en";
   const langMap = {
     English: "en",
     Hindi: "hi",
-    Hinglish: "en",
+    Hinglish: "Hinglish", // Let the backend handle the STT/TTS routing!
   };
-  return langMap[language] || "en";
+  return langMap[language] || language;
 };
 
 // ------------------------------------------------------------------
@@ -20,11 +21,9 @@ const mapLanguage = (language) => {
 // ------------------------------------------------------------------
 export const startInterviewSession = async (skill, language) => {
   try {
-    console.log("START SESSION API:", START_SESSION_ENDPOINT);
-
     const formData = new FormData();
     formData.append("skill", skill);
-    formData.append("language", mapLanguage(language)); // ✅ FIX
+    formData.append("language", mapLanguage(language)); 
 
     const response = await fetch(START_SESSION_ENDPOINT, {
       method: "POST",
@@ -105,8 +104,6 @@ export const getInterviewSummary = async (sessionId) => {
 // ------------------------------------------------------------------
 export const parseResume = async (resumeFile) => {
   try {
-    console.log("RESUME API:", RESUME_PARSE_ENDPOINT);
-
     const formData = new FormData();
     formData.append("resume", resumeFile);
 
@@ -138,7 +135,7 @@ export const getTrainingRecommendations = async (
       user_id: sessionId,
       role: contextData.role || null,
       skills: contextData.skills || [],
-      language: mapLanguage(contextData.language), // ✅ FIX
+      language: mapLanguage(contextData.language),
       strengths: contextData.strengths || [],
       gaps: contextData.gaps || [],
     };
@@ -174,7 +171,7 @@ export const startGuidanceChat = async (
 
     const formData = new FormData();
     formData.append("session_id", sessionId);
-    formData.append("language", mapLanguage(language)); // ✅ FIX
+    formData.append("language", mapLanguage(language)); 
     if (skill) formData.append("skill", skill);
 
     const response = await fetch(url, {
@@ -213,7 +210,7 @@ export const sendAudioToGuidanceChat = async (
 
     formData.append("audio", audioBlob, `chat.${extension}`);
     formData.append("session_id", sessionId);
-    formData.append("language", mapLanguage(language)); // ✅ FIX
+    formData.append("language", mapLanguage(language)); 
     if (skill) formData.append("skill", skill);
 
     const response = await fetch(url, {
