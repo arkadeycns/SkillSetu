@@ -73,10 +73,14 @@ app = FastAPI(title="SkillSetu Backend", lifespan=lifespan)
 # --- CORS CONFIGURATION ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[ "http://localhost:5173",
+    allow_origins=[ 
+        "http://localhost:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174", ],
+        "http://127.0.0.1:5174",
+        "https://skillsetu-nvtq1es7l-hrideshs-projects-f8a2f486.vercel.app"
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app", # Safely allows any future Vercel preview links too
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
