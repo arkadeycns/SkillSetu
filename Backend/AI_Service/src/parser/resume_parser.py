@@ -6,7 +6,7 @@ from typing import Any
 
 from groq import Groq
 
-from src.config import GROQ_API_KEY
+from AI_Service.src.config import GROQ_API_KEY
 
 
 MODEL_CANDIDATES = [

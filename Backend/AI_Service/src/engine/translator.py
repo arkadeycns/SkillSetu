@@ -1,7 +1,7 @@
 # src/engine/translator.py
 
 from groq import Groq
-from src.config import GROQ_API_KEY
+from AI_Service.src.config import GROQ_API_KEY
 
 client = Groq(api_key=GROQ_API_KEY)
 

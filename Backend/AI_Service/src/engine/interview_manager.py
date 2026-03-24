@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List
 from uuid import uuid4
 
-from src.engine.interview_reporter import generate_final_interview_report
-from src.engine.question_bank import QuestionItem, get_category_questions
+from AI_Service.src.engine.interview_reporter import generate_final_interview_report
+from AI_Service.src.engine.question_bank import QuestionItem, get_category_questions
 
 
 @dataclass

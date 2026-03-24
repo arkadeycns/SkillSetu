@@ -7,8 +7,8 @@ import re
 
 from groq import Groq
 
-from src.config import GROQ_API_KEY
-from src.rag.retriever import retrieve_sops
+from AI_Service.src.config import GROQ_API_KEY
+from AI_Service.src.rag.retriever import retrieve_sops
 
 
 MODEL_CANDIDATES = [

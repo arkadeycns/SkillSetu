@@ -10,8 +10,8 @@ from urllib.parse import urlparse
 
 from groq import Groq
 
-from src.config import GROQ_API_KEY
-from src.rag.qa import career_chat_query, rag_query
+from AI_Service.src.config import GROQ_API_KEY
+from AI_Service.src.rag.qa import career_chat_query, rag_query
 
 
 MODEL_CANDIDATES = [

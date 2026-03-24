@@ -8,7 +8,7 @@ from typing import List
 from google import genai
 from pinecone import Pinecone
 
-from src.config import GEMINI_API_KEY, PINECONE_API_KEY
+from AI_Service.src.config import GEMINI_API_KEY, PINECONE_API_KEY
 
 INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "skillsetu-sops-3072")
 EMBED_MODEL = "gemini-embedding-001"

@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 from google import genai
 from google.genai import types
 
-from src.config import GEMINI_API_KEY
+from AI_Service.src.config import GEMINI_API_KEY
 
 MODEL_NAME = "gemini-1.5-flash"
 
