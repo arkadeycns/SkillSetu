@@ -5,7 +5,7 @@ import "react-circular-progressbar/dist/styles.css";
 import { useNavigate } from "react-router-dom";
 import { ShieldCheck, Medal, Plus, Loader2, Sparkles } from "lucide-react";
 import { useAuth } from "@clerk/clerk-react"; 
-
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, '');
 export default function Wallet() {
   const navigate = useNavigate();
   const { userId } = useAuth(); 
@@ -18,7 +18,7 @@ export default function Wallet() {
       if (!userId) return; 
       
       try {
-        const response = await fetch(`http://localhost:8000/api/user/${userId}`);
+        const response = await fetch(`${API_BASE_URL}/api/user/${userId}`);
         const data = await response.json();
         
         if (data && data.skills) {

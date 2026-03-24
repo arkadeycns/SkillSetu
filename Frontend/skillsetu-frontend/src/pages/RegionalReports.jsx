@@ -4,7 +4,7 @@ import { ComposableMap, Geographies, Geography } from "react-simple-maps";
 import { scaleLinear } from "d3-scale";
 import Layout from "../layout/Layout";
 import { TrendingUp, RefreshCw } from "lucide-react";
-
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, '');
 const INDIA_MAP = "https://raw.githubusercontent.com/india-in-data/india-states-2019/master/india_states.geojson";
 
 export default function RegionalReports() {
@@ -16,7 +16,7 @@ export default function RegionalReports() {
   const fetchMapData = async () => {
     setIsSyncing(true);
     try {
-      const response = await fetch("http://localhost:8000/api/admin/stats");
+      const response = await fetch(`${API_BASE_URL}/api/admin/stats`);
       const result = await response.json();
       
       if (result.heatmapData) {

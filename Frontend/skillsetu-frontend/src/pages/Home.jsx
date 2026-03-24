@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import Layout from "../layout/Layout";
 import { ShieldCheck, Mic, FileText, LayoutDashboard, BarChart3, Users, Bot } from "lucide-react";
-
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, '');
 export default function Home() {
   const navigate = useNavigate();
   const { isSignedIn, isLoaded } = useUser();
@@ -19,7 +19,7 @@ export default function Home() {
     if (isSignedIn && role === "government") {
       const fetchHomeStats = async () => {
         try {
-          const res = await fetch("http://localhost:8000/api/admin/stats");
+          const res = await fetch(`${API_BASE_URL}/api/admin/stats`);
           const data = await res.json();
           
           // Figure out the top region by sorting the heatmap data

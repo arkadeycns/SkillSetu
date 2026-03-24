@@ -14,6 +14,7 @@ import {
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
 import { sendAudioToAI, getInterviewSummary } from "../api/aiService";
 import { useAuth, useUser } from "@clerk/clerk-react";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, '');
 
 export default function AIInterview() {
   const navigate = useNavigate();
@@ -109,7 +110,7 @@ export default function AIInterview() {
       const isPass = finalScore >= 70;
 
       if (userId) {
-        await fetch("http://localhost:8000/api/user/update", {
+        await fetch(`${API_BASE_URL}/api/user/update`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

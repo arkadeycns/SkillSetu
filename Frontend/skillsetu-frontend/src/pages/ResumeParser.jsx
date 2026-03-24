@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { parseResume, getTrainingRecommendations } from "../api/aiService";
 import { BookOpen, Bot, Loader2, MapPin } from "lucide-react";
 import { useAuth, useUser } from "@clerk/clerk-react"; 
-
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, '');
 const INDIAN_STATES = [
   "Andhra Pradesh", "Bihar", "Delhi", "Gujarat", "Haryana", 
   "Karnataka", "Kerala", "Maharashtra", "Punjab", "Rajasthan", 
@@ -78,7 +78,7 @@ export const ResumeParser = () => {
     
       if (userId) {
         try {
-          await fetch("http://localhost:8000/api/user/update", {
+          await fetch(`${API_BASE_URL}/api/user/update`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
