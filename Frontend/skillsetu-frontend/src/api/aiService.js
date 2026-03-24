@@ -10,7 +10,7 @@ const mapLanguage = (language) => {
   const langMap = {
     English: "en",
     Hindi: "hi",
-    Hinglish: "en",
+    Hinglish: "Hinglish",
   };
   return langMap[language] || "en";
 };
