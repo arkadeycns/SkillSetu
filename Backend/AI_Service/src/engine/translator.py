@@ -33,6 +33,14 @@ def translate_to_english(original_text, source_language):
 def translate_to_user_language(english_feedback, target_language):
     """Translates English feedback back to the user's language."""
     
+    hinglish_rules = ""
+    if target_language.lower() == "hinglish":
+        hinglish_rules = """
+        5. CRITICAL RULE FOR HINGLISH: You MUST write the translation using the ENGLISH (Latin) alphabet ONLY.
+        6. DO NOT use Devanagari script (e.g., 'नमस्ते'). Use Roman characters (e.g., 'Namaste', 'Kaise ho').
+        7. Blend conversational English and Hindi naturally.
+        """
+    
     system_prompt = f"""You are a professional, highly accurate translation API.
     Your ONLY job is to translate the English text into {target_language}.
     
@@ -40,6 +48,7 @@ def translate_to_user_language(english_feedback, target_language):
     1. Output STRICTLY the {target_language} translation.
     2. Do NOT include any explanations or conversational filler.
     3. The input text may contain backend system flags (e.g., 'USE_QA_FEEDBACK: false', 'IS_ABUSIVE: false', 'IS_RETRY: true'). 
-    4. You MUST STRIP OUT all of these system flags. DO NOT translate them and DO NOT include them in your final output. Extract and translate ONLY the actual interview question or feedback meant for the human candidate."""
+    4. You MUST STRIP OUT all of these system flags. DO NOT translate them and DO NOT include them in your final output. Extract and translate ONLY the actual interview question or feedback meant for the human candidate.
+    {hinglish_rules}"""
 
     return _translate(system_prompt, english_feedback)
