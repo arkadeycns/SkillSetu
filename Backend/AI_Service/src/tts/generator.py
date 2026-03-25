@@ -3,6 +3,7 @@ from gtts import gTTS
 
 LANGUAGE_MAP = {
     "Hindi": "hi",
+    "Hinglish": "hi", 
     "English": "en",
     "Tamil": "ta",
     "Telugu": "te",
@@ -15,16 +16,7 @@ LANGUAGE_MAP = {
 }
 
 ISO_LANG_WHITELIST = {
-    "en",
-    "hi",
-    "ta",
-    "te",
-    "bn",
-    "mr",
-    "gu",
-    "kn",
-    "ml",
-    "pa",
+    "en", "hi", "ta", "te", "bn", "mr", "gu", "kn", "ml", "pa",
 }
 
 def generate_audio_response(text, language_code, output_filename="data/response.mp3"):
@@ -32,12 +24,13 @@ def generate_audio_response(text, language_code, output_filename="data/response.
 
     try:
         normalized = (language_code or "").strip()
-        # Accept either full language name or already-detected ISO code.
+        
         if normalized in ISO_LANG_WHITELIST:
             lang = normalized
         else:
-            lang = LANGUAGE_MAP.get(normalized, "en")
+            lang = LANGUAGE_MAP.get(normalized.capitalize(), "en")
 
+        # Create audio using the assigned language model
         tts = gTTS(text=text, lang=lang, slow=False)
         tts.save(output_filename)
 
@@ -46,7 +39,6 @@ def generate_audio_response(text, language_code, output_filename="data/response.
     except Exception as e:
         print(f"TTS Error with language {language_code}: {e}")
 
-        # fallback to English
         tts = gTTS(text=text, lang="en", slow=False)
         tts.save(output_filename)
 
